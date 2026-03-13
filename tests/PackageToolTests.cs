@@ -1,7 +1,7 @@
 using Xunit;
 using System.IO;
 
-namespace AutoReadMod.Tests.Tools
+namespace GameApiExporter.Tests.Tools
 {
     public class PackageToolTests
     {

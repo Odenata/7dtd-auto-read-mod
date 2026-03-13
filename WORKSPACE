@@ -1,4 +1,4 @@
-# Bazel workspace for AutoReadMod (7 Days to Die)
+# Bazel workspace for GameApiExporter (7 Days to Die)
 
 workspace(name = "7dtd_auto_read_mod")
 

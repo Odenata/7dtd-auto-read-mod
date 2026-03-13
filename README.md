@@ -1,6 +1,6 @@
-# AutoReadMod (7 Days to Die)
+# GameApiExporter (7 Days to Die)
 
-AutoReadMod automatically consumes **readable loot** (magazines, books, recipes) when you encounter it in containers.
+`GameApiExporter` is a temporary in-game diagnostic/export mod used to extract public game API metadata from a live 7 Days to Die process.
 
 - **Project overview**: `docs/PROJECT_OVERVIEW.md`
 - **Design notes**: `docs/DESIGN.md`
@@ -28,7 +28,7 @@ From repo root:
 ## Unit tests
 
 ```powershell
-dotnet test .\tests\AutoReadMod.Tests.csproj -c Release
+dotnet test .\tests\GameApiExporter.Tests.csproj -c Release
 ```
 
 ## Deploy (integration smoke testing)

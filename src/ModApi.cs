@@ -1,24 +1,21 @@
-using HarmonyLib;
 using System;
 using System.Linq;
 
-namespace AutoReadMod
+namespace GameApiExporter
 {
     public class ModApi : IModApi
     {
         public void InitMod(Mod modInstance)
         {
-            SafeLog("Loading Auto-Read Mod");
+            SafeLog("Loading Game API Exporter");
             
             // Load configuration
             var config = ModConfig.Instance;
-            SafeLog($"Auto-Read Mod config: Enabled={config.Enabled}, Books={config.ReadBooks}, Magazines={config.ReadMagazines}, Schematics={config.ReadSchematics}");
+            SafeLog($"Game API Exporter config: Enabled={config.Enabled}, ExportOnStartup={config.RuntimeApiExportOnStartup}, TargetAssemblies={config.TargetAssemblies}");
             
-            // Apply Harmony patches
-            var harmony = new Harmony("com.learninggrounds.autoreadmod");
-            harmony.PatchAll();
-            
-            SafeLog("Auto-Read Mod loaded successfully");
+            RuntimeApiExporter.TryExportOnStartup();
+
+            SafeLog("Game API Exporter loaded successfully");
         }
 
         private static void SafeLog(string message)

@@ -1,7 +1,7 @@
 using Xunit;
 using System;
 
-namespace AutoReadMod.Tests
+namespace GameApiExporter.Tests
 {
     public class ConfigurationFilteringTests
     {

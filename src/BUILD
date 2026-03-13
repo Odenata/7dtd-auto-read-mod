@@ -1,8 +1,12 @@
 load("@rules_dotnet_framework//dotnet:defs.bzl", "net_library")
 
 net_library(
-    name = "AutoReadMod",
-    srcs = glob(["*.cs"]),
+    name = "GameApiExporter",
+    srcs = [
+        "ModApi.cs",
+        "ModConfig.cs",
+        "RuntimeApiExporter.cs",
+    ],
     target_framework = "net472",
     visibility = ["//visibility:public"],
     deps = [

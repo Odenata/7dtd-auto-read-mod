@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using Xunit;
 
-namespace AutoReadMod.Tests.Integration
+namespace GameApiExporter.Tests.Integration
 {
     public class GameLaunchTests
     {
@@ -54,7 +54,7 @@ namespace AutoReadMod.Tests.Integration
                     if (File.Exists(logPath))
                     {
                         var content = File.ReadAllText(logPath);
-                        if (content.Contains("Auto-Read Mod loaded successfully"))
+                        if (content.Contains("Game API Exporter loaded successfully"))
                         {
                             found = true;
                             break;

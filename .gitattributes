@@ -1,0 +1,13 @@
+###############################
+# Git Line Endings            #
+###############################
+
+# Normalize text files in the repository.
+* text=auto
+
+# Windows-native scripts should keep CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Shell scripts should keep LF.
+*.sh text eol=lf

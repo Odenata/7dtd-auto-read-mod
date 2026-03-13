@@ -1,7 +1,7 @@
 using Xunit;
 using System.IO;
 
-namespace AutoReadMod.Tests.Tools
+namespace GameApiExporter.Tests.Tools
 {
     public class DeployToolTests
     {
@@ -18,8 +18,8 @@ namespace AutoReadMod.Tests.Tools
             var scriptPath = Path.Combine("..", "..", "..", "..", "tools", "deploy.ps1");
             var content = File.ReadAllText(scriptPath);
             
-            Assert.Contains("Copy-Item", content);
-            Assert.Contains("Mods", content);
+            Assert.Contains("7dtd-mod-dev-tools", content);
+            Assert.Contains("GameApiExporter", content);
         }
     }
 }

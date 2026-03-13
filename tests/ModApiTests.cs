@@ -1,7 +1,7 @@
 using Xunit;
 using Moq;
 
-namespace AutoReadMod.Tests
+namespace GameApiExporter.Tests
 {
     public class ModApiTests
     {

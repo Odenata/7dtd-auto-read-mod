@@ -2,8 +2,9 @@
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
-    <AssemblyName>AutoReadMod</AssemblyName>
-    <RootNamespace>AutoReadMod</RootNamespace>
+    <AssemblyName>GameApiExporter</AssemblyName>
+    <RootNamespace>GameApiExporter</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <LangVersion>9.0</LangVersion>
   </PropertyGroup>
 
@@ -26,11 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Harmony for patching (vendored in dev-tools) -->
-    <Reference Include="0Harmony">
-      <HintPath>$(SevenDtdDevToolsDir)\third_party\harmony\lib\net472\0Harmony.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
+    <Compile Include="ModApi.cs" />
+    <Compile Include="ModConfig.cs" />
+    <Compile Include="RuntimeApiExporter.cs" />
+    <None Include="ModInfo.xml" />
+    <None Include="Config.xml" />
   </ItemGroup>
 
 </Project>

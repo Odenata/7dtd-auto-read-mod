@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Xml;
 
-namespace AutoReadMod
+namespace GameApiExporter
 {
     public class ModConfig
     {
@@ -12,11 +12,14 @@ namespace AutoReadMod
         public bool ReadSchematics { get; set; } = true;
         public bool DebugMode { get; set; } = false;
         public bool ExperimentalApiTesting { get; set; } = false;
+        public bool RuntimeApiExportOnStartup { get; set; } = true;
+        public string TargetAssemblies { get; set; } = "Assembly-CSharp,Assembly-CSharp-firstpass";
+        public string ExportDirectoryName { get; set; } = "api-export";
 
         private static ModConfig instance;
         private static readonly string configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "..", "LocalLow", "The Fun Pimps", "7 Days To Die", "Mods", "AutoReadMod", "Config.xml");
+            "..", "LocalLow", "The Fun Pimps", "7 Days To Die", "Mods", "GameApiExporter", "Config.xml");
 
         public static ModConfig Instance
         {
@@ -68,7 +71,19 @@ namespace AutoReadMod
                 if (experimentalNode != null)
                     config.ExperimentalApiTesting = bool.Parse(experimentalNode.InnerText);
 
-                SafeLog($"Auto-Read Mod config loaded: Enabled={config.Enabled}");
+                var exportNode = doc.SelectSingleNode("//RuntimeApiExportOnStartup");
+                if (exportNode != null)
+                    config.RuntimeApiExportOnStartup = bool.Parse(exportNode.InnerText);
+
+                var targetAssembliesNode = doc.SelectSingleNode("//TargetAssemblies");
+                if (targetAssembliesNode != null)
+                    config.TargetAssemblies = targetAssembliesNode.InnerText.Trim();
+
+                var exportDirNode = doc.SelectSingleNode("//ExportDirectoryName");
+                if (exportDirNode != null)
+                    config.ExportDirectoryName = exportDirNode.InnerText.Trim();
+
+                SafeLog($"Game API Exporter config loaded: Enabled={config.Enabled}");
             }
             catch (Exception)
             {
@@ -85,19 +100,22 @@ namespace AutoReadMod
                 Directory.CreateDirectory(Path.GetDirectoryName(configPath));
                 
                 var defaultConfig = @"<?xml version=""1.0"" encoding=""UTF-8""?>
-<AutoReadModConfig>
+<GameApiExporterConfig>
   <Enabled>true</Enabled>
   <DebugMode>false</DebugMode>
   <ExperimentalApiTesting>false</ExperimentalApiTesting>
+  <RuntimeApiExportOnStartup>true</RuntimeApiExportOnStartup>
+  <TargetAssemblies>Assembly-CSharp,Assembly-CSharp-firstpass</TargetAssemblies>
+  <ExportDirectoryName>api-export</ExportDirectoryName>
   <ItemTypes>
     <Books>true</Books>
     <Magazines>true</Magazines>
     <Schematics>true</Schematics>
   </ItemTypes>
-</AutoReadModConfig>";
+</GameApiExporterConfig>";
                 
                 File.WriteAllText(configPath, defaultConfig);
-                SafeLog($"Created default Auto-Read Mod config at: {configPath}");
+                SafeLog($"Created default Game API Exporter config at: {configPath}");
             }
             catch (Exception)
             {

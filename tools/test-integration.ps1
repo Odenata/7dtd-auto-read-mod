@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$devTools = Join-Path $PSScriptRoot "..\\7dtd-mod-dev-tools\\tools\\test-integration.ps1"
-& $devTools -TimeoutSeconds $TimeoutSeconds -GameInstallDir $GameInstallDir -ModLogPattern "Auto-Read|AutoReadMod"
+$devTools = Join-Path $PSScriptRoot "..\\..\\7dtd-mod-dev-tools\\tools\\test-integration.ps1"
+& $devTools -TimeoutSeconds $TimeoutSeconds -GameInstallDir $GameInstallDir -ModLogPattern "Runtime API export completed|Runtime API export failed"
 exit $LASTEXITCODE
 

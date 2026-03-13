@@ -3,7 +3,7 @@ using System;
 using System.IO;
 using System.Xml;
 
-namespace AutoReadMod.Tests
+namespace GameApiExporter.Tests
 {
     public class AutoReaderTests
     {

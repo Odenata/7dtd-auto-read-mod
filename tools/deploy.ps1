@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$devTools = Join-Path $PSScriptRoot "..\\7dtd-mod-dev-tools\\tools\\deploy.ps1"
-& $devTools -ModRepoPath (Join-Path $PSScriptRoot "..") -ModName "AutoReadMod" -Configuration $Configuration -GameInstallDir $GameInstallDir
+$devTools = Join-Path $PSScriptRoot "..\\..\\7dtd-mod-dev-tools\\tools\\deploy.ps1"
+& $devTools -ModRepoPath (Join-Path $PSScriptRoot "..") -ModName "GameApiExporter" -Configuration $Configuration -GameInstallDir $GameInstallDir
 exit $LASTEXITCODE
 

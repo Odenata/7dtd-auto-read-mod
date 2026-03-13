@@ -1,4 +1,4 @@
-# Root BUILD file for AutoReadMod
+# Root BUILD file for GameApiExporter
 
 exports_files([
     "README.md",

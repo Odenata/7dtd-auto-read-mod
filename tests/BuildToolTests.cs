@@ -1,7 +1,7 @@
 using Xunit;
 using System.IO;
 
-namespace AutoReadMod.Tests.Tools
+namespace GameApiExporter.Tests.Tools
 {
     public class BuildToolTests
     {
@@ -18,8 +18,8 @@ namespace AutoReadMod.Tests.Tools
             var scriptPath = Path.Combine("..", "..", "..", "..", "tools", "build.ps1");
             var content = File.ReadAllText(scriptPath);
             
-            Assert.Contains("dotnet build", content);
-            Assert.Contains("Assembly", content);
+            Assert.Contains("7dtd-mod-dev-tools", content);
+            Assert.Contains("GameApiExporter.csproj", content);
         }
     }
 }

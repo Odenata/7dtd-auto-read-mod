@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <LangVersion>9.0</LangVersion>
   </PropertyGroup>
 
@@ -15,7 +16,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\AutoReadMod.csproj" />
+    <ProjectReference Include="..\src\GameApiExporter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="BuildToolTests.cs" />
+    <Compile Include="DeployToolTests.cs" />
+    <Compile Include="ModConfigTests.cs" />
+    <Compile Include="DebugLoggingTests.cs" />
+    <Compile Include="GameLaunchTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
