@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ModInfo>
+  <Name value="AutoReadMod" />
+  <DisplayName value="Auto-Read Mod" />
+  <Description value="Automatically reads magazines, books, and recipes when opening containers" />
+  <Author value="LearningGrounds" />
+  <Version value="0.1.0" />
+  <Website value="" />
+</ModInfo>

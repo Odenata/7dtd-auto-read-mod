@@ -1,0 +1,8 @@
+module(
+    name = "7dtd_auto_read_mod",
+    version = "0.1.0",
+)
+
+# This repo currently relies on WORKSPACE for most Bazel deps.
+# Keeping this file enables a future Bzlmod-first setup.
+

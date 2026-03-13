@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AssemblyName>AutoReadMod</AssemblyName>
+    <RootNamespace>AutoReadMod</RootNamespace>
+    <LangVersion>9.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(SevenDtdInstallDir)' != ''">
+    <!-- 7 Days to Die game assemblies (local install) -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(SevenDtdInstallDir)\7DaysToDie_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(SevenDtdInstallDir)\7DaysToDie_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(SevenDtdInstallDir)' == ''">
+    <!-- Mocks (hermetic builds/tests without a live game install) -->
+    <ProjectReference Include="$(SevenDtdDevToolsDir)\mocks\UnityEngine-CoreModule-Mock.csproj" />
+    <ProjectReference Include="$(SevenDtdDevToolsDir)\mocks\Assembly-CSharp-Mock.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Harmony for patching (vendored in dev-tools) -->
+    <Reference Include="0Harmony">
+      <HintPath>$(SevenDtdDevToolsDir)\third_party\harmony\lib\net472\0Harmony.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

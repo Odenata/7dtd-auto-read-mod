@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AutoReadModConfig>
+  <!-- Enable or disable the mod without uninstalling -->
+  <Enabled>true</Enabled>
+  
+  <!-- Configure which item types to auto-read -->
+  <ItemTypes>
+    <Books>true</Books>
+    <Magazines>true</Magazines>
+    <Schematics>true</Schematics>
+  </ItemTypes>
+</AutoReadModConfig>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <SevenDtdInstallDir Condition="'$(SevenDtdInstallDir)' == ''">$([System.Environment]::GetEnvironmentVariable('SEVEN_DTD_INSTALL_DIR'))</SevenDtdInstallDir>
+    <SevenDtdDevToolsDir Condition="'$(SevenDtdDevToolsDir)' == ''">$(MSBuildThisFileDirectory)..\\7dtd-mod-dev-tools</SevenDtdDevToolsDir>
+  </PropertyGroup>
+</Project>
+
