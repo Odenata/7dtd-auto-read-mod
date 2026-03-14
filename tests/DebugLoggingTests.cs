@@ -1,7 +1,7 @@
 using Xunit;
 using System;
 
-namespace GameApiExporter.Tests
+namespace AutoReadMod.Tests
 {
     public class DebugLoggingTests
     {

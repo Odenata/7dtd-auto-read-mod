@@ -1,26 +1,28 @@
 # Design
 
-## Core idea
+## Core Idea
 
-When the mod initializes inside the live game process, `GameApiExporter` reflects the loaded game assemblies and writes a structured export to disk. The dev-tools repo then converts that export into the published markdown reference.
+AutoReadMod uses a Harmony patch on the loot window to detect when the player opens a container. It scans the container for readable items (books, magazines, schematics, recipes), invokes `ItemActionEat.consume()` for each to apply effects, then removes them from the container.
 
-## Runtime behavior
+## Runtime Behavior
 
-- **Mod startup**: run the exporter once during initialization.
-- **Assembly selection**: export the configured public surface from `Assembly-CSharp` and `Assembly-CSharp-firstpass`.
-- **Disk output**: write deterministic tab-separated export files to the `LocalLow` mod area for later markdown generation.
+- **Container open**: Harmony patch on `XUiC_LootWindowGroup` (or equivalent) runs when the loot UI is shown.
+- **Item scan**: Iterate container slots, identify readable items by name patterns (book*, *magazine*, *schematic, *recipe; exclude *bundle*).
+- **Consumption**: For each readable item, find `ItemActionEat` on the item's actions, create `ItemInventoryData` and `ItemActionData`, call `consume()`.
+- **Removal**: After consumption, clear the slot via `container.UpdateSlot(slotIndex, ItemStack.Empty)`.
 
 ## Configuration
 
-Configuration is expected to be controlled via a mod-local config file (see `src/Config.xml`) and/or in-mod defaults. The mod should allow:
+See `src/Config.xml` and `ModConfig.cs`:
 
-- Enable/disable overall behavior
-- Enable/disable runtime export on startup
-- Select which assemblies to export
-- Choose the export output directory name
+- **Enabled** — Enable/disable overall behavior
+- **ReadBooks** — Include books
+- **ReadMagazines** — Include magazines
+- **ReadSchematics** — Include schematics and recipes
+- **DebugMode** — Verbose logging
+- **ExperimentalApiTesting** — Run API experiments on first readable item instead of normal processing
 
-## Testing strategy
+## Testing Strategy
 
-- **Unit tests**: keep basic script and configuration checks in place where useful.
-- **Integration smoke test**: deploy to a local game install, verify the exporter runs, and confirm the runtime export files are produced.
-
+- **Unit tests**: Business logic (item identification, config filtering, null safety) without game DLLs.
+- **Integration smoke test**: Deploy to local game install, verify mod loads and auto-read works.

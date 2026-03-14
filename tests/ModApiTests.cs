@@ -1,7 +1,7 @@
 using Xunit;
 using Moq;
 
-namespace GameApiExporter.Tests
+namespace AutoReadMod.Tests
 {
     public class ModApiTests
     {
@@ -13,8 +13,8 @@ namespace GameApiExporter.Tests
             
             var exception = Record.Exception(() => modApi.InitMod(mockMod.Object));
             
-            // Either succeeds or throws HarmonyException (expected in test environment)
-            Assert.True(exception == null || exception is HarmonyLib.HarmonyException);
+            // Either succeeds or throws (e.g. HarmonyException in test environment)
+            Assert.True(exception == null || exception.GetType().Name == "HarmonyException");
         }
 
         [Fact]
@@ -24,8 +24,8 @@ namespace GameApiExporter.Tests
             
             var exception = Record.Exception(() => modApi.InitMod(null));
             
-            // Either succeeds or throws HarmonyException (expected in test environment)
-            Assert.True(exception == null || exception is HarmonyLib.HarmonyException);
+            // Either succeeds or throws (e.g. HarmonyException in test environment)
+            Assert.True(exception == null || exception.GetType().Name == "HarmonyException");
         }
     }
 }

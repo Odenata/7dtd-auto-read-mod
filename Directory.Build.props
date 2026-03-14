@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <SevenDtdInstallDir Condition="'$(SevenDtdInstallDir)' == ''">$([System.Environment]::GetEnvironmentVariable('SEVEN_DTD_INSTALL_DIR'))</SevenDtdInstallDir>
+    <SevenDtdInstallDir Condition="'$(SevenDtdInstallDir)' == ''">$([System.Environment]::GetEnvironmentVariable('7_DAYS_TO_DIE_GAME_PATH'))</SevenDtdInstallDir>
     <SevenDtdDevToolsDir Condition="'$(SevenDtdDevToolsDir)' == ''">$(MSBuildThisFileDirectory)..\\7dtd-mod-dev-tools</SevenDtdDevToolsDir>
   </PropertyGroup>
 </Project>

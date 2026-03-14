@@ -1,17 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<GameApiExporterConfig>
+<AutoReadModConfig>
   <!-- Enable or disable the mod without uninstalling -->
   <Enabled>true</Enabled>
   <DebugMode>false</DebugMode>
   <ExperimentalApiTesting>false</ExperimentalApiTesting>
-  <RuntimeApiExportOnStartup>true</RuntimeApiExportOnStartup>
-  <TargetAssemblies>Assembly-CSharp,Assembly-CSharp-firstpass</TargetAssemblies>
-  <ExportDirectoryName>api-export</ExportDirectoryName>
-  
-  <!-- Legacy item settings retained while the old reader code still exists -->
   <ItemTypes>
     <Books>true</Books>
     <Magazines>true</Magazines>
     <Schematics>true</Schematics>
   </ItemTypes>
-</GameApiExporterConfig>
+</AutoReadModConfig>

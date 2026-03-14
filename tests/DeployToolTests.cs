@@ -1,7 +1,7 @@
 using Xunit;
 using System.IO;
 
-namespace GameApiExporter.Tests.Tools
+namespace AutoReadMod.Tests.Tools
 {
     public class DeployToolTests
     {
@@ -19,7 +19,7 @@ namespace GameApiExporter.Tests.Tools
             var content = File.ReadAllText(scriptPath);
             
             Assert.Contains("7dtd-mod-dev-tools", content);
-            Assert.Contains("GameApiExporter", content);
+            Assert.Contains("AutoReadMod", content);
         }
     }
 }

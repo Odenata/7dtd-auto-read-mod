@@ -1,21 +1,17 @@
 using System;
-using System.Linq;
 
-namespace GameApiExporter
+namespace AutoReadMod
 {
     public class ModApi : IModApi
     {
         public void InitMod(Mod modInstance)
         {
-            SafeLog("Loading Game API Exporter");
+            SafeLog("Loading AutoReadMod");
             
-            // Load configuration
             var config = ModConfig.Instance;
-            SafeLog($"Game API Exporter config: Enabled={config.Enabled}, ExportOnStartup={config.RuntimeApiExportOnStartup}, TargetAssemblies={config.TargetAssemblies}");
-            
-            RuntimeApiExporter.TryExportOnStartup();
+            SafeLog($"Config: Enabled={config.Enabled}, DebugMode={config.DebugMode}");
 
-            SafeLog("Game API Exporter loaded successfully");
+            SafeLog("AutoReadMod loaded successfully");
         }
 
         private static void SafeLog(string message)

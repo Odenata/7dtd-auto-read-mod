@@ -1,4 +1,4 @@
-# Root BUILD file for GameApiExporter
+# Root BUILD file for AutoReadMod
 
 exports_files([
     "README.md",
@@ -9,7 +9,7 @@ test_suite(
     name = "all",
     tests = [
         "//tests:all",
-        "@7dtd_mod_dev_tools//tools:validate_all_scripts",
+        "@seven_days_to_die_mod_dev_tools//tools:validate_all_scripts",
     ],
 )
 

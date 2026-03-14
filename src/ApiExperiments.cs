@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace GameApiExporter
+namespace AutoReadMod
 {
     /// <summary>
     /// Experimental class for testing alternative APIs to ItemActionEat.consume()
@@ -354,7 +354,7 @@ namespace GameApiExporter
         {
             try
             {
-                UnityEngine.Debug.Log($"[GameApiExporter][APITest] {message}");
+                UnityEngine.Debug.Log($"[AutoReadMod][APITest] {message}");
             }
             catch
             {

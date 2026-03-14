@@ -1,11 +1,11 @@
 param(
   [int]$TimeoutSeconds = 60,
-  [string]$GameInstallDir = $(if ($env:SEVEN_DTD_INSTALL_DIR) { $env:SEVEN_DTD_INSTALL_DIR } else { "" })
+  [string]$GameInstallDir = $(if ($env:7_DAYS_TO_DIE_GAME_PATH) { $env:7_DAYS_TO_DIE_GAME_PATH } else { "" })
 )
 
 $ErrorActionPreference = "Stop"
 
-$devTools = Join-Path $PSScriptRoot "..\\..\\7dtd-mod-dev-tools\\tools\\test-integration.ps1"
-& $devTools -TimeoutSeconds $TimeoutSeconds -GameInstallDir $GameInstallDir -ModLogPattern "Runtime API export completed|Runtime API export failed"
+$devTools = Join-Path $PSScriptRoot "..\\..\\7dtd-mod-dev-tools\\tools\\integration-test\\test-integration.ps1"
+& $devTools -TimeoutSeconds $TimeoutSeconds -GameInstallDir $GameInstallDir -ModLogPattern "AutoReadMod loaded successfully"
 exit $LASTEXITCODE
 

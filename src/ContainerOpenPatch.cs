@@ -1,6 +1,6 @@
 using HarmonyLib;
 
-namespace GameApiExporter
+namespace AutoReadMod
 {
     [HarmonyPatch(typeof(XUiC_LootWindowGroup))]
     [HarmonyPatch("SetTileEntityChest")]
@@ -38,7 +38,7 @@ namespace GameApiExporter
         {
             try
             {
-                UnityEngine.Debug.Log($"[GameApiExporter] {message}");
+                UnityEngine.Debug.Log($"[AutoReadMod] {message}");
             }
             catch
             {

@@ -175,6 +175,12 @@ bazel test //tests:all --test_output=all
 
 ---
 
+## Known Workaround
+
+The `ItemActionEat.consume()` call in `AutoReader.ReadItem` is wrapped in a try-catch that increments `successfulConsumes` even on exception ("effects might have been applied before the error"). This masks partial failures. See [docs/DEVELOPMENT_STATUS.md](../docs/DEVELOPMENT_STATUS.md) for details and exploration of healthier alternatives.
+
+---
+
 ## Test Limitations
 
 ### Current Limitations
@@ -272,7 +278,7 @@ The following scenarios require integration tests with the actual game:
 
 ## Related Documentation
 
-- [GAME_API.md](../docs/GAME_API.md) - Game API reference
-- [API_INVESTIGATION.md](../docs/API_INVESTIGATION.md) - Alternative API investigation
-- [BUILD_REQUIREMENTS.md](../docs/BUILD_REQUIREMENTS.md) - Build system requirements
-- [README.md](README.md) - Test suite overview
+- [README.md](../README.md) - Project overview and build instructions
+- [docs/PROJECT_OVERVIEW.md](../docs/PROJECT_OVERVIEW.md) - Project context and goals
+- [docs/DESIGN.md](../docs/DESIGN.md) - Design notes
+- [docs/DEVELOPMENT_STATUS.md](../docs/DEVELOPMENT_STATUS.md) - Current progress and known workarounds

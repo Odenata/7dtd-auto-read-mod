@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace GameApiExporter
+namespace AutoReadMod
 {
     public static class AutoReader
     {
@@ -112,7 +112,7 @@ namespace GameApiExporter
             var itemName = itemClass.GetLocalizedItemName();
             int stackCount = itemStack.count;
 
-            SafeLog($"GameApiExporter legacy reader: {player.EntityName} reading {stackCount}x {itemName}");
+            SafeLog($"AutoReadMod: {player.EntityName} reading {stackCount}x {itemName}");
 
             try
             {
@@ -191,7 +191,7 @@ namespace GameApiExporter
         {
             try
             {
-                UnityEngine.Debug.Log($"[GameApiExporter] {message}");
+                UnityEngine.Debug.Log($"[AutoReadMod] {message}");
             }
             catch
             {

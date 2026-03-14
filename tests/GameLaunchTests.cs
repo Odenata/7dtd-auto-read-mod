@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using Xunit;
 
-namespace GameApiExporter.Tests.Integration
+namespace AutoReadMod.Tests.Integration
 {
     public class GameLaunchTests
     {

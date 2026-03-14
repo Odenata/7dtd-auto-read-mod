@@ -1,13 +1,13 @@
-# Bazel workspace for GameApiExporter (7 Days to Die)
+# Bazel workspace for AutoReadMod (7 Days to Die)
 
-workspace(name = "7dtd_auto_read_mod")
+workspace(name = "seven_days_to_die_auto_read_mod")
 
 load("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # Local dependency on the shared dev tools repo (recommended layout: sibling checkout).
 local_repository(
-    name = "7dtd_mod_dev_tools",
+    name = "seven_days_to_die_mod_dev_tools",
     path = "../7dtd-mod-dev-tools",
 )
 
