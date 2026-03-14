@@ -47,23 +47,10 @@ namespace AutoReadMod
                 var gameManager = GameManager.Instance;
                 var inventoryData = new ItemInventoryData(itemClass, itemStack, gameManager, player, -1);
 
-                // Get PlayerActionsLocal - this might be the tricky part
-                // Try to get it from the player's entity
-                var playerActions = player.playerInput?.PrimaryPlayer;
-                
-                if (playerActions == null)
-                {
-                    Log($"[API Test 1] Could not get PlayerActionsLocal - player.playerInput.PrimaryPlayer is null");
-                    return false;
-                }
-
-                Log($"[API Test 1] Calling ExecuteAction(actionIdx={actionIndex}, bReleased=false)");
-                
-                // Call ExecuteAction
-                itemClass.ExecuteAction(actionIndex, inventoryData, false, playerActions);
-                
-                Log($"[API Test 1] ExecuteAction completed without exception");
-                return true;
+                // ItemClass.ExecuteAction requires PlayerActionsLocal from PlatformManager.
+                // We don't reference Platform/InControl assemblies; skip this test.
+                Log($"[API Test 1] Skipped - ItemClass.ExecuteAction requires PlayerActionsLocal (PlatformManager)");
+                return false;
             }
             catch (Exception ex)
             {
@@ -267,15 +254,11 @@ namespace AutoReadMod
 
                 Log($"[API Test 5] Found {buffActions.Count} buff actions");
 
-                // Apply each buff to the player
-                foreach (var buffClass in buffActions)
+                // Apply each buff to the player (getBuffActions returns List<string>)
+                foreach (var buffName in buffActions)
                 {
-                    Log($"[API Test 5] Applying buff: {buffClass.Name}");
-                    
-                    // Try to add buff to player
-                    // Need to investigate the correct method - might be AddBuff, Buffs.AddBuff, etc.
-                    // This is a placeholder - actual implementation depends on EntityPlayer API
-                    player.Buffs.AddBuff(buffClass.Name);
+                    Log($"[API Test 5] Applying buff: {buffName}");
+                    player.Buffs.AddBuff(buffName);
                 }
 
                 Log($"[API Test 5] Direct buff application completed");

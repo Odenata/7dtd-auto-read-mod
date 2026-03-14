@@ -143,42 +143,49 @@ namespace AutoReadMod
 
                 DebugLog($"Found ItemActionEat, will consume {stackCount} items");
                 
-                // Consume each item in the stack
+                // Fire the item's onSelfPrimaryActionEnd event - this runs effect_groups (AddProgressionLevel, GiveExp, etc)
+                // without needing the item in player inventory. Same path the game uses when reading from container.
                 int successfulConsumes = 0;
+                var gameManager = GameManager.Instance;
+
                 for (int i = 0; i < stackCount; i++)
                 {
                     DebugLog($"Consuming item {i + 1}/{stackCount}");
-                    
                     try
                     {
-                        // Create ItemInventoryData (required for ItemActionData)
-                        // Use -1 for slot index since the item is not in player inventory
-                        var gameManager = GameManager.Instance;
-                        var inventoryData = new ItemInventoryData(itemClass, itemStack, gameManager, player, -1);
-                        
-                        // Create ItemActionData
-                        var actionData = new ItemActionData(inventoryData, 0);
-                        
-                        // Call consume() - this applies the reading effects!
-                        eatAction.consume(actionData);
+                        var singleStack = new ItemStack(itemStack.itemValue, 1);
+                        var invData = new ItemInventoryData(itemClass, singleStack, gameManager, player, -1);
+                        var actionData = new ItemActionData(invData, 0);
+                        var evtParams = new MinEventParams { Self = player, ItemValue = itemStack.itemValue, ItemInventoryData = invData };
+                        itemClass.FireEvent(MinEventTypes.onSelfPrimaryActionEnd, evtParams);
                         successfulConsumes++;
-                        DebugLog($"Successfully consumed item {i + 1}/{stackCount}");
+                        DebugLog($"Successfully applied effect for item {i + 1}/{stackCount}");
                     }
                     catch (System.Exception consumeEx)
                     {
-                        DebugLog($"Error during consume (item {i + 1}): {consumeEx.Message}");
-                        // Continue anyway - the effects might have been applied before the error
-                        successfulConsumes++;
+                        SafeLog($"Error consuming {itemName} (item {i + 1}/{stackCount}): {consumeEx.Message}");
+                        DebugLog($"Stack trace: {consumeEx.StackTrace}");
                     }
                 }
                 
-                DebugLog($"Consumed {successfulConsumes}/{stackCount}x {itemName}, now removing from container");
+                DebugLog($"Consumed {successfulConsumes}/{stackCount}x {itemName}, now updating container");
                 
-                // Remove the entire stack from the container
-                container.UpdateSlot(slotIndex, ItemStack.Empty);
-                container.SetModified();
-                
-                DebugLog($"Stack removed from container slot {slotIndex}");
+                // Remove only successfully consumed items
+                if (successfulConsumes > 0)
+                {
+                    if (successfulConsumes >= stackCount)
+                    {
+                        container.UpdateSlot(slotIndex, ItemStack.Empty);
+                        DebugLog($"Stack removed from container slot {slotIndex}");
+                    }
+                    else
+                    {
+                        var remaining = stackCount - successfulConsumes;
+                        container.UpdateSlot(slotIndex, new ItemStack(itemStack.itemValue, remaining));
+                        DebugLog($"Reduced stack to {remaining} in slot {slotIndex}");
+                    }
+                    container.SetModified();
+                }
             }
             catch (System.Exception ex)
             {

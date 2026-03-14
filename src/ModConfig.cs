@@ -14,9 +14,7 @@ namespace AutoReadMod
         public bool ExperimentalApiTesting { get; set; } = false;
 
         private static ModConfig instance;
-        private static readonly string configPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "..", "LocalLow", "The Fun Pimps", "7 Days To Die", "Mods", "AutoReadMod", "Config.xml");
+        private static string configPath;
 
         public static ModConfig Instance
         {
@@ -30,8 +28,25 @@ namespace AutoReadMod
             }
         }
 
+        private static string GetConfigPath()
+        {
+            // Prefer mod folder next to DLL (game install Mods/AutoReadMod or 7DaysToDie/Mods/AutoReadMod)
+            var assemblyDir = Path.GetDirectoryName(typeof(ModConfig).Assembly.Location);
+            if (!string.IsNullOrEmpty(assemblyDir))
+            {
+                var modFolderConfig = Path.Combine(assemblyDir, "Config.xml");
+                if (File.Exists(modFolderConfig))
+                    return modFolderConfig;
+            }
+            // Fallback: Unity LocalLow (older game versions)
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "..", "LocalLow", "The Fun Pimps", "7 Days To Die", "Mods", "AutoReadMod", "Config.xml");
+        }
+
         private static ModConfig Load()
         {
+            configPath = GetConfigPath();
             var config = new ModConfig();
             
             if (!File.Exists(configPath))

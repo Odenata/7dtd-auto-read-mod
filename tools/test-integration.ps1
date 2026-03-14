@@ -6,6 +6,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 $devTools = Join-Path $PSScriptRoot "..\\..\\7dtd-mod-dev-tools\\tools\\integration-test\\test-integration.ps1"
-& $devTools -TimeoutSeconds $TimeoutSeconds -GameInstallDir $GameInstallDir -ModLogPattern "AutoReadMod loaded successfully"
+$params = @{
+  TimeoutSeconds = $TimeoutSeconds
+  ModLogPattern = "AutoReadMod loaded successfully"
+}
+if ($GameInstallDir) {
+  $params["GameInstallDir"] = $GameInstallDir
+}
+& $devTools @params
 exit $LASTEXITCODE
 
