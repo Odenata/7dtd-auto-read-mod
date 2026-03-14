@@ -1,5 +1,4 @@
 using Xunit;
-using Moq;
 
 namespace AutoReadMod.Tests
 {
@@ -9,9 +8,9 @@ namespace AutoReadMod.Tests
         public void InitMod_WithValidModInstance_InitializesOrThrowsHarmonyException()
         {
             var modApi = new ModApi();
-            var mockMod = new Mock<Mod>();
+            var mod = new Mod();
             
-            var exception = Record.Exception(() => modApi.InitMod(mockMod.Object));
+            var exception = Record.Exception(() => modApi.InitMod(mod));
             
             // Either succeeds or throws (e.g. HarmonyException in test environment)
             Assert.True(exception == null || exception.GetType().Name == "HarmonyException");

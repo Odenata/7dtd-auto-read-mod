@@ -25,9 +25,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(SevenDtdInstallDir)' == ''">
-    <!-- Mocks (hermetic builds/tests without a live game install) -->
+    <!-- IDE/MSBuild fallback; Bazel fetches pinned mocks and Harmony itself -->
     <ProjectReference Include="$(SevenDtdDevToolsDir)\mocks\UnityEngine-CoreModule-Mock.csproj" />
     <ProjectReference Include="$(SevenDtdDevToolsDir)\mocks\Assembly-CSharp-Mock.csproj" />
+    <Reference Include="0Harmony">
+      <HintPath>$(SevenDtdDevToolsDir)\third_party\harmony\lib\net472\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -35,7 +39,6 @@
     <Compile Include="ModConfig.cs" />
     <Compile Include="ContainerOpenPatch.cs" />
     <Compile Include="AutoReader.cs" />
-    <Compile Include="ApiExperiments.cs" />
     <None Include="ModInfo.xml" />
     <None Include="Config.xml" />
   </ItemGroup>

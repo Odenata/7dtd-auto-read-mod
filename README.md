@@ -4,7 +4,6 @@ AutoReadMod forces the player to automatically read books, magazines, schematics
 
 - **Project overview**: `docs/PROJECT_OVERVIEW.md`
 - **Design notes**: `docs/DESIGN.md`
-- **Development status**: `docs/DEVELOPMENT_STATUS.md`
 
 ## Prerequisites
 
@@ -16,16 +15,14 @@ AutoReadMod forces the player to automatically read books, magazines, schematics
 
 Optional:
 
-- Bazel (experimental / in-progress .NET support)
+- Bazel for hermetic unit/tool tests
 
 ## Dependencies
 
-This mod depends on [7dtd-mod-dev-tools](../7dtd-mod-dev-tools) (sibling checkout recommended):
+This mod uses `7dtd-mod-dev-tools` in two different ways:
 
-- **Build/deploy**: `tools/build.ps1`, `deploy.ps1`, `test-integration.ps1` delegate to dev-tools
-- **Mocks**: `Assembly-CSharp-Mock`, `UnityEngine-CoreModule-Mock` for builds without game install
-- **Harmony**: `@seven_days_to_die_mod_dev_tools//third_party/harmony`
-- **WORKSPACE**: `local_repository` for dev-tools
+- **Local build/deploy**: `tools/build.ps1`, `deploy.ps1`, `test-integration.ps1` still delegate to a sibling `../7dtd-mod-dev-tools` checkout
+- **Hermetic Bazel tests**: `MODULE.bazel` fetches pinned external repos for mock assemblies, Harmony, the xUnit runner, and xUnit libraries
 
 ## Build
 
@@ -36,6 +33,17 @@ From repo root:
 ```
 
 ## Unit tests
+
+Hermetic Bazel suites:
+
+```powershell
+bazel test //tests:unit
+bazel test //tests:tools
+```
+
+Those Bazel tests are intentionally wired through explicit pinned repositories in `MODULE.bazel` instead of extension-generated `use_repo(...)` imports, so `bazel mod tidy` does not strip out required xUnit dependencies.
+
+IDE/editor compatibility path:
 
 ```powershell
 dotnet test .\tests\AutoReadMod.Tests.csproj -c Release

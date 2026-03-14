@@ -11,7 +11,6 @@ namespace AutoReadMod
         public bool ReadMagazines { get; set; } = true;
         public bool ReadSchematics { get; set; } = true;
         public bool DebugMode { get; set; } = false;
-        public bool ExperimentalApiTesting { get; set; } = false;
 
         private static ModConfig instance;
         private static string configPath;
@@ -79,10 +78,6 @@ namespace AutoReadMod
                 if (debugNode != null)
                     config.DebugMode = bool.Parse(debugNode.InnerText);
 
-                var experimentalNode = doc.SelectSingleNode("//ExperimentalApiTesting");
-                if (experimentalNode != null)
-                    config.ExperimentalApiTesting = bool.Parse(experimentalNode.InnerText);
-
                 SafeLog($"AutoReadMod config loaded: Enabled={config.Enabled}");
             }
             catch (Exception)
@@ -103,7 +98,6 @@ namespace AutoReadMod
 <AutoReadModConfig>
   <Enabled>true</Enabled>
   <DebugMode>false</DebugMode>
-  <ExperimentalApiTesting>false</ExperimentalApiTesting>
   <ItemTypes>
     <Books>true</Books>
     <Magazines>true</Magazines>

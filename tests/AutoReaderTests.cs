@@ -118,13 +118,10 @@ namespace AutoReadMod.Tests
 
         private TileEntityLootContainer CreateMockContainer(ItemStack[] items)
         {
-            // In a real test environment, this would create a proper mock
-            // For now, create a minimal mock that has the items property
             var container = new TileEntityLootContainer(null);
             if (items != null)
             {
-                typeof(TileEntityLootContainer).GetField("items", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                    ?.SetValue(container, items);
+                container.items = items;
             }
             return container;
         }

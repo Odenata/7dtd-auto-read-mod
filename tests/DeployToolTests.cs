@@ -8,14 +8,14 @@ namespace AutoReadMod.Tests.Tools
         [Fact]
         public void DeployScript_Exists()
         {
-            var scriptPath = Path.Combine("..", "..", "..", "..", "tools", "deploy.ps1");
+            var scriptPath = TestDataPath.GetRepoFile(@"tools\deploy.ps1");
             Assert.True(File.Exists(scriptPath), "deploy.ps1 should exist");
         }
 
         [Fact]
         public void DeployScript_ContainsRequiredCommands()
         {
-            var scriptPath = Path.Combine("..", "..", "..", "..", "tools", "deploy.ps1");
+            var scriptPath = TestDataPath.GetRepoFile(@"tools\deploy.ps1");
             var content = File.ReadAllText(scriptPath);
             
             Assert.Contains("7dtd-mod-dev-tools", content);

@@ -11,7 +11,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.6.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4" />
-    <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
   </ItemGroup>
 
@@ -20,24 +19,34 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="AutoReaderTests.cs" />
     <Compile Include="BuildToolTests.cs" />
+    <Compile Include="ConfigurationFilteringTests.cs" />
     <Compile Include="DeployToolTests.cs" />
-    <Compile Include="ModApiTests.cs" />
-    <Compile Include="ModConfigTests.cs" />
     <Compile Include="DebugLoggingTests.cs" />
     <Compile Include="GameLaunchTests.cs" />
+    <Compile Include="ItemIdentificationTests.cs" />
+    <Compile Include="ModApiTests.cs" />
+    <Compile Include="ModConfigTests.cs" />
+    <Compile Include="TestDataPath.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- 7 Days to Die game assemblies for testing -->
+  <ItemGroup Condition="'$(SevenDtdInstallDir)' != ''">
+    <!-- Real game assemblies when game is installed -->
     <Reference Include="Assembly-CSharp">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(SevenDtdInstallDir)\7DaysToDie_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\7 Days To Die\7DaysToDie_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(SevenDtdInstallDir)\7DaysToDie_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>True</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(SevenDtdInstallDir)' == ''">
+    <!-- IDE/MSBuild fallback when Bazel is not driving the mock dependency graph -->
+    <ProjectReference Include="$(SevenDtdDevToolsDir)\mocks\UnityEngine-CoreModule-Mock.csproj" />
+    <ProjectReference Include="$(SevenDtdDevToolsDir)\mocks\Assembly-CSharp-Mock.csproj" />
   </ItemGroup>
 
 </Project>

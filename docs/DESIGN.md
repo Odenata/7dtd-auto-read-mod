@@ -20,9 +20,9 @@ See `src/Config.xml` and `ModConfig.cs`:
 - **ReadMagazines** — Include magazines
 - **ReadSchematics** — Include schematics and recipes
 - **DebugMode** — Verbose logging
-- **ExperimentalApiTesting** — Run API experiments on first readable item instead of normal processing
 
 ## Testing Strategy
 
-- **Unit tests**: Business logic (item identification, config filtering, null safety) without game DLLs.
+- **Hermetic Bazel unit/tool tests**: Mock-based tests run through native Bazel `net_xunit_test` targets with pinned external dependencies from `MODULE.bazel`.
+- **IDE/MSBuild compatibility**: The `.csproj` files remain available for editor support and optional local `dotnet test`, but they are no longer the source of truth for the hermetic test graph.
 - **Integration smoke test**: Deploy to local game install, verify mod loads and auto-read works.

@@ -3,7 +3,6 @@
   <!-- Enable or disable the mod without uninstalling -->
   <Enabled>true</Enabled>
   <DebugMode>false</DebugMode>
-  <ExperimentalApiTesting>false</ExperimentalApiTesting>
   <ItemTypes>
     <Books>true</Books>
     <Magazines>true</Magazines>

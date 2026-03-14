@@ -41,15 +41,6 @@ namespace AutoReadMod
 
             DebugLog($"Found {itemsToRead.Count} readable items");
             
-            // If experimental API testing is enabled, run tests on first item only
-            if (ModConfig.Instance.ExperimentalApiTesting && itemsToRead.Count > 0)
-            {
-                SafeLog("[EXPERIMENTAL] Running API tests on first readable item");
-                ApiExperiments.RunAllTests(player, container, itemsToRead[0]);
-                SafeLog("[EXPERIMENTAL] API tests complete - check logs for results");
-                return; // Don't process items normally when testing
-            }
-            
             // Read items (in reverse to avoid index issues when removing)
             for (int i = itemsToRead.Count - 1; i >= 0; i--)
             {

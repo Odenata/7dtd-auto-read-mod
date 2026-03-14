@@ -6,6 +6,7 @@ AutoReadMod automatically reads books, magazines, schematics, and recipes when y
 
 - Auto-read readable items on container open with configurable filtering.
 - Keep the build/deploy workflow reproducible and portable.
+- Keep hermetic unit/tool tests Bazel-owned and mock-based.
 
 ## Non-Goals
 
