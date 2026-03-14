@@ -21,6 +21,7 @@
   <ItemGroup>
     <Compile Include="AutoReaderTests.cs" />
     <Compile Include="BuildToolTests.cs" />
+    <Compile Include="BundleOpenPatchTests.cs" />
     <Compile Include="ConfigurationFilteringTests.cs" />
     <Compile Include="DeployToolTests.cs" />
     <Compile Include="DebugLoggingTests.cs" />

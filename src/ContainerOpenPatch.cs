@@ -11,7 +11,7 @@ namespace AutoReadMod
     {
         static void Postfix(XUiC_LootWindowGroup __instance, string _lootContainerName, ITileEntityLootable _te)
         {
-            ContainerOpenPatchShared.ProcessLootContainer(__instance?.xui?.playerUI?.entityPlayer, _te);
+            ContainerOpenPatchShared.ProcessLootContainer(GameReflection.GetPlayerFromLootWindowGroup(__instance), _te);
         }
     }
 
@@ -24,28 +24,13 @@ namespace AutoReadMod
     {
         internal static void ProcessLootContainer(EntityPlayer player, ITileEntityLootable _te)
         {
-            SafeLog("ContainerOpenPatch triggered");
-            
-            if (player == null)
-            {
-                SafeLog("Player is null, skipping");
+            if (player == null || _te == null)
                 return;
-            }
-
-            if (_te == null)
-            {
-                SafeLog("Tile entity is null, skipping");
-                return;
-            }
 
             var lootContainer = _te as TileEntityLootContainer;
             if (lootContainer == null)
-            {
-                SafeLog("Not a loot container, skipping");
                 return;
-            }
 
-            SafeLog($"Processing container with {lootContainer.items?.Length ?? 0} slots");
             AutoReader.ProcessContainer(player, lootContainer);
         }
 

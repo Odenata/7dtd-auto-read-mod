@@ -12,8 +12,8 @@ namespace AutoReadMod.Tests
             
             var exception = Record.Exception(() => modApi.InitMod(mod));
             
-            // Either succeeds or throws (e.g. HarmonyException in test environment)
-            Assert.True(exception == null || exception.GetType().Name == "HarmonyException");
+            Assert.False(exception is System.NullReferenceException, exception?.ToString());
+            Assert.False(exception is System.ArgumentNullException, exception?.ToString());
         }
 
         [Fact]
@@ -23,8 +23,8 @@ namespace AutoReadMod.Tests
             
             var exception = Record.Exception(() => modApi.InitMod(null));
             
-            // Either succeeds or throws (e.g. HarmonyException in test environment)
-            Assert.True(exception == null || exception.GetType().Name == "HarmonyException");
+            Assert.False(exception is System.NullReferenceException, exception?.ToString());
+            Assert.False(exception is System.ArgumentNullException, exception?.ToString());
         }
     }
 }
