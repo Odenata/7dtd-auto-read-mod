@@ -45,7 +45,6 @@
     <Compile Include="AutoReadVisualizationEvent.cs" />
     <Compile Include="AutoReadVisualizationQueue.cs" />
     <Compile Include="AutoReadVisualizationOverlay.cs" />
-    <Compile Include="CollectedItemListPatch.cs" />
     <None Include="ModInfo.xml" />
     <None Include="Config.xml" />
   </ItemGroup>

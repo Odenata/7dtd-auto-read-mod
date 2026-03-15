@@ -15,9 +15,6 @@ namespace AutoReadMod
         private static MethodInfo _addIconNotificationMethod;
         private static MethodInfo _addItemStackMethod;
 
-        /// <summary>Entries we added (Data ref) for persistence: skip removal until our duration elapsed.</summary>
-        internal static readonly HashSet<object> OurEntryDataRefs = new HashSet<object>();
-
         /// <summary>Pending color re-apply: (Data ref, color, time added). Re-apply each frame for a short window so color sticks if game rebinds.</summary>
         private static readonly List<PendingColor> PendingColors = new List<PendingColor>();
         /// <summary>Bundle entries: game may replace list refs so we re-apply by index (first N entries = our bundle notifications).</summary>
@@ -130,7 +127,6 @@ namespace AutoReadMod
                 }
                 return;
             }
-            OurEntryDataRefs.Add(lastData);
             var color = GetColorForKind(kind);
             bool applied = TrySetLastEntryColor(collectedItemList, lastData, color, kind);
             if (ModConfig.Instance.DebugMode)

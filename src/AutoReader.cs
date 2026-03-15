@@ -209,11 +209,6 @@ namespace AutoReadMod
                 return ReadableItemKind.Book;
             }
 
-            if (normalizedName.Contains("magazine"))
-            {
-                return ReadableItemKind.Magazine;
-            }
-
             if (normalizedName.EndsWith("schematic"))
             {
                 return ReadableItemKind.Schematic;
@@ -222,6 +217,11 @@ namespace AutoReadMod
             if (normalizedName.EndsWith("recipe"))
             {
                 return ReadableItemKind.Recipe;
+            }
+
+            if (normalizedName.Contains("magazine"))
+            {
+                return ReadableItemKind.Magazine;
             }
 
             return ReadableItemKind.None;

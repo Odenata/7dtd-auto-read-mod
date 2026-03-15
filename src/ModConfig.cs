@@ -16,8 +16,6 @@ namespace AutoReadMod
 
         // Visualization (splash when items are auto-read)
         public bool VisualizationEnabled { get; set; } = true;
-        public float VisualizationDurationSeconds { get; set; } = 6f;
-        public float VisualizationIconScale { get; set; } = 1f;
         public int VisualizationMaxVisible { get; set; } = 8;
         public Color VisualizationColorBook { get; set; } = new Color(0.2f, 0.9f, 0.3f, 1f);
         public Color VisualizationColorMagazine { get; set; } = new Color(0f, 0.4f, 1f, 1f);
@@ -94,14 +92,6 @@ namespace AutoReadMod
                 if (visEnabledNode != null)
                     config.VisualizationEnabled = bool.Parse(visEnabledNode.InnerText);
 
-                var visDurationNode = doc.SelectSingleNode("//Visualization/DurationSeconds");
-                if (visDurationNode != null && float.TryParse(visDurationNode.InnerText, out float duration))
-                    config.VisualizationDurationSeconds = duration;
-
-                var visScaleNode = doc.SelectSingleNode("//Visualization/IconScale");
-                if (visScaleNode != null && float.TryParse(visScaleNode.InnerText, out float scale))
-                    config.VisualizationIconScale = scale;
-
                 var visMaxNode = doc.SelectSingleNode("//Visualization/MaxVisible");
                 if (visMaxNode != null && int.TryParse(visMaxNode.InnerText, out int maxVisible))
                     config.VisualizationMaxVisible = maxVisible;
@@ -137,18 +127,23 @@ namespace AutoReadMod
                 
                 var defaultConfig = @"<?xml version=""1.0"" encoding=""UTF-8""?>
 <AutoReadModConfig>
+  <!-- Turn the whole mod on or off without uninstalling. Values: true, false -->
   <Enabled>true</Enabled>
+  <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
   <DebugMode>false</DebugMode>
+  <!-- Which item types to auto-read when you open loot. Set to false to skip that type. Values: true, false -->
   <ItemTypes>
     <Books>true</Books>
     <Magazines>true</Magazines>
     <Schematics>true</Schematics>
   </ItemTypes>
+  <!-- On-screen notifications when items are auto-read (same area as loot pickups) -->
   <Visualization>
+    <!-- Show or hide the notifications. Values: true, false -->
     <Enabled>true</Enabled>
-    <DurationSeconds>6</DurationSeconds>
-    <IconScale>1</IconScale>
+    <!-- Maximum number of notifications shown at once (older ones drop off). Values: positive number, e.g. 8 -->
     <MaxVisible>8</MaxVisible>
+    <!-- Notification text color per item type. Six hex digits, no # (e.g. 00CC40 = green). -->
     <ColorBook>00CC40</ColorBook>
     <ColorMagazine>0066FF</ColorMagazine>
     <ColorRecipe>E6CC00</ColorRecipe>

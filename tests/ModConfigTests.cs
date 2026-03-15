@@ -108,24 +108,13 @@ namespace AutoReadMod.Tests
         }
 
         [Fact]
-        public void DefaultConfig_VisualizationDurationSecondsIsPositive()
-        {
-            var config = new ModConfig();
-            Assert.True(config.VisualizationDurationSeconds > 0);
-        }
-
-        [Fact]
         public void ModConfig_VisualizationPropertiesCanBeSet()
         {
             var config = new ModConfig();
             config.VisualizationEnabled = false;
-            config.VisualizationDurationSeconds = 5f;
-            config.VisualizationIconScale = 1.5f;
             config.VisualizationMaxVisible = 4;
 
             Assert.False(config.VisualizationEnabled);
-            Assert.Equal(5f, config.VisualizationDurationSeconds);
-            Assert.Equal(1.5f, config.VisualizationIconScale);
             Assert.Equal(4, config.VisualizationMaxVisible);
         }
 

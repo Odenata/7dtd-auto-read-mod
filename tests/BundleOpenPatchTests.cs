@@ -15,6 +15,8 @@ namespace AutoReadMod.Tests
             Assert.Equal(AutoReader.ReadableItemKind.Magazine, AutoReader.ClassifyReadableItemName("magazineGuns"));
             Assert.Equal(AutoReader.ReadableItemKind.Schematic, AutoReader.ClassifyReadableItemName("modGunBarrelExtenderSchematic"));
             Assert.Equal(AutoReader.ReadableItemKind.Recipe, AutoReader.ClassifyReadableItemName("foodCanShamRecipe"));
+            // Schematic/recipe checked before magazine so names like gunMagazineSchematic classify as Schematic, not Magazine.
+            Assert.Equal(AutoReader.ReadableItemKind.Schematic, AutoReader.ClassifyReadableItemName("gunMagazineSchematic"));
         }
 
         [Fact]
