@@ -6,7 +6,7 @@ namespace AutoReadMod
 {
     public static class AutoReader
     {
-        internal enum ReadableItemKind
+        public enum ReadableItemKind
         {
             None,
             Book,
@@ -39,7 +39,7 @@ namespace AutoReadMod
             for (int i = itemsToRead.Count - 1; i >= 0; i--)
             {
                 int slotIndex = itemsToRead[i];
-                ReadStack(player, container.items[slotIndex], GameReflection.GetItemCount(container.items[slotIndex]), updatedStack =>
+                ReadStack(player, container.items[slotIndex], GameReflection.GetItemCount(container.items[slotIndex]), AutoReadVisualizationSource.Container, updatedStack =>
                 {
                     container.UpdateSlot(slotIndex, updatedStack);
                     container.SetModified();
@@ -107,7 +107,7 @@ namespace AutoReadMod
                     continue;
                 }
 
-                ReadStack(player, itemStack, consumeCount, updatedStack =>
+                ReadStack(player, itemStack, consumeCount, AutoReadVisualizationSource.Bundle, updatedStack =>
                 {
                     inventory.SetItem(slotIndex, updatedStack);
                     inventory.Changed();
@@ -144,7 +144,7 @@ namespace AutoReadMod
                     continue;
                 }
 
-                ReadStack(player, itemStack, consumeCount, updatedStack =>
+                ReadStack(player, itemStack, consumeCount, AutoReadVisualizationSource.Bundle, updatedStack =>
                 {
                     GameReflection.SetBagItem(bag, slotIndex, updatedStack);
                 });
@@ -239,7 +239,7 @@ namespace AutoReadMod
             return $"{GameReflection.GetItemType(itemValue)}:{name}".ToLowerInvariant();
         }
 
-        private static void ReadStack(EntityPlayer player, ItemStack itemStack, int consumeCount, Action<ItemStack> updateStack)
+        private static void ReadStack(EntityPlayer player, ItemStack itemStack, int consumeCount, AutoReadVisualizationSource source, Action<ItemStack> updateStack)
         {
             var itemValue = GameReflection.GetItemValue(itemStack);
             var itemClass = GameReflection.GetItemClass(itemValue);
@@ -279,6 +279,9 @@ namespace AutoReadMod
                     updateStack(new ItemStack(itemValue, remaining));
                     DebugLog($"Reduced stack to {remaining}");
                 }
+
+                var kind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
+                EmitVisualizationEvent(itemClass, itemValue, successfulConsumes, source, kind);
             }
             catch (Exception ex)
             {
@@ -405,6 +408,26 @@ namespace AutoReadMod
             catch
             {
                 // Unity not available (test environment)
+            }
+        }
+
+        private static void EmitVisualizationEvent(ItemClass itemClass, ItemValue itemValue, int count, AutoReadVisualizationSource source, ReadableItemKind kind)
+        {
+            if (itemClass == null || count <= 0)
+            {
+                return;
+            }
+
+            string itemClassName = GameReflection.GetItemClassName(itemClass);
+            string itemKey = $"{GameReflection.GetItemType(itemValue)}:{itemClassName}".ToLowerInvariant();
+            string localizedName = itemClass.GetLocalizedItemName();
+            string iconName = GameReflection.GetItemIconName(itemClass);
+
+            var evt = new AutoReadVisualizationEvent(itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue);
+            AutoReadVisualizationQueue.Enqueue(evt);
+            if (ModConfig.Instance.DebugMode)
+            {
+                try { UnityEngine.Debug.Log($"[AutoReadMod] Visualization: enqueued event {itemClassName}, Kind={kind}"); } catch { }
             }
         }
 

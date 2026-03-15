@@ -29,6 +29,7 @@
     <Compile Include="ItemIdentificationTests.cs" />
     <Compile Include="ModApiTests.cs" />
     <Compile Include="ModConfigTests.cs" />
+    <Compile Include="VisualizationTests.cs" />
     <Compile Include="TestDataPath.cs" />
   </ItemGroup>
 

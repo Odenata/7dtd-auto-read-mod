@@ -8,4 +8,15 @@
     <Magazines>true</Magazines>
     <Schematics>true</Schematics>
   </ItemTypes>
+  <!-- Duration may only take effect if the game's list respects it; removal is controlled by XUiC_CollectedItemList -->
+  <Visualization>
+    <Enabled>true</Enabled>
+    <DurationSeconds>6</DurationSeconds>
+    <IconScale>1</IconScale>
+    <MaxVisible>8</MaxVisible>
+    <ColorBook>00CC40</ColorBook>
+    <ColorMagazine>0066FF</ColorMagazine>
+    <ColorRecipe>E6CC00</ColorRecipe>
+    <ColorSchematic>FF00FF</ColorSchematic>
+  </Visualization>
 </AutoReadModConfig>

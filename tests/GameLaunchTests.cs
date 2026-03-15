@@ -14,7 +14,7 @@ namespace AutoReadMod.Tests.Integration
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "..", "LocalLow", "The Fun Pimps", "7 Days To Die", "output_log.txt");
 
-        [Fact(Skip = "Integration test - run manually")]
+        [Fact(Skip = "Integration test - run manually; launches game and checks output_log.txt for 'AutoReadMod loaded successfully'")]
         public void GameLaunches_ModLoadsSuccessfully()
         {
             var gameExe = Path.Combine(gamePath, "7DaysToDie.exe");
@@ -54,7 +54,7 @@ namespace AutoReadMod.Tests.Integration
                     if (File.Exists(logPath))
                     {
                         var content = File.ReadAllText(logPath);
-                        if (content.Contains("Game API Exporter loaded successfully"))
+                        if (content.Contains("AutoReadMod loaded successfully"))
                         {
                             found = true;
                             break;
@@ -63,7 +63,7 @@ namespace AutoReadMod.Tests.Integration
                     Thread.Sleep(500);
                 }
 
-                Assert.True(found, "Mod did not load successfully within timeout");
+                Assert.True(found, "AutoReadMod did not load successfully within timeout (check output_log.txt for [AutoReadMod] messages)");
             }
             finally
             {

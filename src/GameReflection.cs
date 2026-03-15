@@ -12,6 +12,264 @@ namespace AutoReadMod
             return GetMemberValue<EntityPlayer>(playerUi, "entityPlayer");
         }
 
+        /// <summary>
+        /// Gets XUiC_CollectedItemList for showing item notifications (same UI as loot pickups).
+        /// Tries: (1) main XUi from patched xui's player, (2) GameManager local player XUi, (3) given xui.
+        /// </summary>
+        internal static object GetCollectedItemList(object xui)
+        {
+            var mainXui = GetMainXUiFromPatchedXUi(xui);
+            var list = GetCollectedItemListFromXUi(mainXui);
+            if (list != null) return list;
+            var localPlayerXui = GetLocalPlayerXUi();
+            list = GetCollectedItemListFromXUi(localPlayerXui);
+            if (list != null) return list;
+            return GetCollectedItemListFromXUi(xui);
+        }
+
+        /// <summary>
+        /// Gets the main game XUi from a patched XUi: xui -> playerUI -> entityPlayer -> PlayerUI -> xui.
+        /// Works when the patched xui is the loot/HUD root and has playerUI.
+        /// </summary>
+        private static object GetMainXUiFromPatchedXUi(object xui)
+        {
+            if (xui == null) return null;
+            object playerUI = GetMemberValue<object>(xui, "playerUI");
+            if (playerUI == null) playerUI = GetMemberValue<object>(xui, "PlayerUI");
+            if (playerUI == null) return null;
+            object player = GetMemberValue<object>(playerUI, "entityPlayer");
+            if (player == null) player = GetMemberValue<object>(playerUI, "EntityPlayer");
+            if (player == null) return null;
+            object mainPlayerUI = GetMemberValue<object>(player, "PlayerUI");
+            if (mainPlayerUI == null) mainPlayerUI = GetMemberValue<object>(player, "playerUI");
+            if (mainPlayerUI == null) return null;
+            object mainXui = GetMemberValue<object>(mainPlayerUI, "xui");
+            if (mainXui == null) mainXui = GetMemberValue<object>(mainPlayerUI, "mXUi");
+            if (mainXui == null) mainXui = GetMemberValue<object>(mainPlayerUI, "Xui");
+            return mainXui;
+        }
+
+        /// <summary>
+        /// Gets XUiC_CollectedItemList from a single XUi instance. Tries multiple member names.
+        /// </summary>
+        private static object GetCollectedItemListFromXUi(object xui)
+        {
+            if (xui == null) return null;
+            foreach (var name in new[] { "CollectedItemList", "collectedItemList" })
+            {
+                var list = GetMemberValue<object>(xui, name);
+                if (list != null) return list;
+            }
+            var type = xui.GetType();
+            foreach (var prop in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (prop.PropertyType == null) continue;
+                if (!prop.PropertyType.Name.Contains("CollectedItemList")) continue;
+                if (prop.GetIndexParameters().Length != 0) continue;
+                try
+                {
+                    var list = prop.GetValue(xui, null);
+                    if (list != null) return list;
+                }
+                catch { /* ignore */ }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the XUi instance for the local player (in-game HUD). GameManager -> local player -> PlayerUI -> xui.
+        /// Tries multiple member names for game version compatibility.
+        /// </summary>
+        internal static object GetLocalPlayerXUi()
+        {
+            var gm = GetGameManagerInstance();
+            if (gm == null) { LogLocalPlayerChain("GameManager null"); return null; }
+            object localPlayer = GetMemberValue<object>(gm, "myEntityPlayerLocal");
+            if (localPlayer == null) localPlayer = GetMemberValue<object>(gm, "MyEntityPlayerLocal");
+            if (localPlayer == null) localPlayer = FindEntityPlayerOnGameManager(gm);
+            if (localPlayer == null) { LogLocalPlayerChain("myEntityPlayerLocal null"); return null; }
+            object playerUI = GetMemberValue<object>(localPlayer, "PlayerUI");
+            if (playerUI == null) playerUI = GetMemberValue<object>(localPlayer, "playerUI");
+            if (playerUI == null) { LogLocalPlayerChain("PlayerUI null"); return null; }
+            object xui = GetMemberValue<object>(playerUI, "xui");
+            if (xui == null) xui = GetMemberValue<object>(playerUI, "mXUi");
+            if (xui == null) xui = GetMemberValue<object>(playerUI, "Xui");
+            if (xui == null) { LogLocalPlayerChain("xui null"); return null; }
+            return xui;
+        }
+
+        private static float _lastLocalPlayerChainLogTime = -999f;
+        private const float LocalPlayerChainLogIntervalSeconds = 15f;
+
+        private static void LogLocalPlayerChain(string step)
+        {
+            if (!ModConfig.Instance.DebugMode) return;
+            if (UnityEngine.Time.time - _lastLocalPlayerChainLogTime < LocalPlayerChainLogIntervalSeconds) return;
+            _lastLocalPlayerChainLogTime = UnityEngine.Time.time;
+            try { UnityEngine.Debug.Log($"[AutoReadMod] Visualization: GetLocalPlayerXUi failed at: {step}"); } catch { }
+        }
+
+        /// <summary>
+        /// Fallback: find any instance field or property on GameManager that holds an EntityPlayer (e.g. different game build naming).
+        /// </summary>
+        private static object FindEntityPlayerOnGameManager(object gm)
+        {
+            if (gm == null) return null;
+            var type = gm.GetType();
+            var entityPlayerType = typeof(EntityPlayer);
+            try
+            {
+                foreach (var f in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (f.FieldType == null || !entityPlayerType.IsAssignableFrom(f.FieldType)) continue;
+                    var val = f.GetValue(gm);
+                    if (val is EntityPlayer) return val;
+                }
+                foreach (var p in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (p.PropertyType == null || !entityPlayerType.IsAssignableFrom(p.PropertyType)) continue;
+                    if (p.GetIndexParameters().Length != 0) continue;
+                    try
+                    {
+                        var val = p.GetValue(gm, null);
+                        if (val is EntityPlayer) return val;
+                    }
+                    catch { /* ignore */ }
+                }
+            }
+            catch { /* ignore */ }
+            return null;
+        }
+
+        /// <summary>
+        /// Resolves an ItemValue by item class name for display (e.g. to build an ItemStack for AddItemStack).
+        /// Tries nameToItemCaseInsensitive dictionary, then list + GetItemClass/GetItem (instance methods).
+        /// </summary>
+        internal static ItemValue GetItemValueByClassName(string itemClassName)
+        {
+            if (string.IsNullOrWhiteSpace(itemClassName))
+            {
+                return null;
+            }
+
+            var itemClassType = typeof(ItemClass);
+
+            // 1) Try nameToItemCaseInsensitive dictionary (static on ItemClass in game)
+            var nameToItemField = itemClassType.GetField("nameToItemCaseInsensitive", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (nameToItemField != null)
+            {
+                try
+                {
+                    var dict = nameToItemField.GetValue(null);
+                    if (dict != null)
+                    {
+                        var dictType = dict.GetType();
+                        var getItemMethod = dictType.GetMethod("get_Item", new[] { typeof(string) });
+                        if (getItemMethod != null)
+                        {
+                            foreach (var key in new[] { itemClassName, itemClassName.ToLowerInvariant() })
+                            {
+                                try
+                                {
+                                    var ic = getItemMethod.Invoke(dict, new object[] { key }) as ItemClass;
+                                    if (ic != null)
+                                    {
+                                        var itemValue = InvokeGetItem(itemClassType, ic, itemClassName);
+                                        if (itemValue != null)
+                                            return itemValue;
+                                    }
+                                }
+                                catch
+                                {
+                                    // Key not found, try next
+                                }
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Fall through
+                }
+            }
+
+            // 2) Get one ItemClass from list, then call instance GetItemClass(name, true) and GetItem(name, true)
+            var listField = itemClassType.GetField("list", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (listField != null)
+            {
+                var list = listField.GetValue(null) as System.Array;
+                if (list != null && list.Length > 0)
+                {
+                    var firstIc = list.GetValue(0) as ItemClass;
+                    if (firstIc != null)
+                    {
+                        var getItemClassMethod = itemClassType.GetMethod("GetItemClass", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        if (getItemClassMethod != null)
+                        {
+                            var parameters = getItemClassMethod.GetParameters();
+                            if (parameters.Length == 2)
+                            {
+                                try
+                                {
+                                    var itemClass = getItemClassMethod.Invoke(firstIc, new object[] { itemClassName, true }) as ItemClass;
+                                    if (itemClass != null)
+                                    {
+                                        var itemValue = InvokeGetItem(itemClassType, itemClass, itemClassName);
+                                        if (itemValue != null)
+                                            return itemValue;
+                                    }
+                                }
+                                catch
+                                {
+                                    // Fall through
+                                }
+                            }
+                        }
+                    }
+
+                    // 3) Iterate list and match by name, then GetItem
+                    for (int i = 0; i < list.Length; i++)
+                    {
+                        var ic = list.GetValue(i) as ItemClass;
+                        if (ic == null) continue;
+                        var name = GetItemClassName(ic);
+                        if (string.IsNullOrEmpty(name))
+                        {
+                            var getNameMethod = itemClassType.GetMethod("GetItemName", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                            if (getNameMethod != null && getNameMethod.GetParameters().Length == 0)
+                                name = getNameMethod.Invoke(ic, null) as string;
+                        }
+                        if (string.Equals(name, itemClassName, System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            var itemValue = InvokeGetItem(itemClassType, ic, itemClassName);
+                            if (itemValue != null)
+                                return itemValue;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static ItemValue InvokeGetItem(System.Type itemClassType, ItemClass itemClass, string itemClassName)
+        {
+            if (itemClass == null) return null;
+            var getItemMethod = itemClassType.GetMethod("GetItem", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (getItemMethod == null) return null;
+            var getItemParams = getItemMethod.GetParameters();
+            if (getItemParams.Length != 2) return null;
+            try
+            {
+                return getItemMethod.Invoke(itemClass, new object[] { itemClassName, true }) as ItemValue;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         internal static Inventory GetInventory(EntityAlive entity)
         {
             return GetMemberValue<Inventory>(entity, "inventory");
@@ -95,6 +353,44 @@ namespace AutoReadMod
         internal static string GetItemClassName(ItemClass itemClass)
         {
             return GetMemberValue<string>(itemClass, "Name") ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Returns the sprite/icon name for the item (used by XUi atlases). Uses ItemClass.GetIconName() when available.
+        /// </summary>
+        internal static string GetItemIconName(ItemClass itemClass)
+        {
+            if (itemClass == null)
+            {
+                return string.Empty;
+            }
+
+            var method = itemClass.GetType().GetMethod("GetIconName", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (method != null && method.GetParameters().Length == 0)
+            {
+                try
+                {
+                    var result = method.Invoke(itemClass, null);
+                    return result?.ToString() ?? string.Empty;
+                }
+                catch
+                {
+                    // Fall through to field/property fallback
+                }
+            }
+
+            var customIcon = GetMemberValue<object>(itemClass, "CustomIcon");
+            if (customIcon != null)
+            {
+                var str = customIcon.ToString();
+                if (!string.IsNullOrEmpty(str))
+                {
+                    return str;
+                }
+            }
+
+            var itemTypeIcon = GetMemberValue<string>(itemClass, "ItemTypeIcon");
+            return itemTypeIcon ?? string.Empty;
         }
 
         internal static object GetItemTags(ItemClass itemClass)
