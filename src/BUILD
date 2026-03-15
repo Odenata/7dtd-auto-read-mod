@@ -4,6 +4,7 @@ net_library(
     name = "AutoReadMod",
     out = "AutoReadMod.dll",
     srcs = [
+        "AssemblyInfo.cs",
         "ModApi.cs",
         "ModConfig.cs",
         "ContainerOpenPatch.cs",

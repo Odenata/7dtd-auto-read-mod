@@ -8,6 +8,16 @@ AutoReadMod automatically reads books, magazines, schematics, and recipes when y
 - Keep the build/deploy workflow reproducible and portable.
 - Keep hermetic unit/tool tests Bazel-owned and mock-based.
 
+## Build requirements
+
+- **Windows:** For `bazel build //...` or `bazel test ...` to succeed, Bazel’s test infrastructure needs a shell toolchain. Set **`BAZEL_SH`** to the path of `bash.exe` before running Bazel, e.g. for Git for Windows:
+
+  ```powershell
+  $env:BAZEL_SH = "C:\Program Files\Git\bin\bash.exe"
+  ```
+
+  (Use your actual Git Bash path if different; WSL or MSYS2 `bash` on PATH also work.) Builds that do not include test targets (e.g. `bazel build //src:all //tools:build`) do not require `BAZEL_SH`. If you set `BAZEL_SH` in a session where Bazel has already been run, run `bazel shutdown` first so the next build starts a new server that sees the variable.
+
 ## Non-Goals
 
 - Guarantee full hermeticity for *deployment* (it necessarily depends on a local game install).

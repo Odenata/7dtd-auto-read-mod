@@ -1,7 +1,7 @@
 diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 --- a/mocks/GameClasses.cs
 +++ b/mocks/GameClasses.cs
-@@ -1,90 +1,143 @@
+@@ -1,90 +1,189 @@
 -// Mock game classes - API signatures only, no implementation
 -// Based on documented API from docs/GAME_API.md
 -
@@ -136,11 +136,23 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +
 +public abstract class ItemActionBase { }
 +
++public abstract class ItemAction : ItemActionBase { }
++
 +public class ItemActionEat : ItemActionBase
 +{
 +    public ItemActionEat() { }
 +
 +    public void ExecuteInstantAction(EntityAlive ent, ItemStack stack, bool isHeldItem, XUiC_ItemStack stackController) { }
++}
++
++public class ItemActionOpenBundle : ItemAction
++{
++    public bool ExecuteInstantAction(EntityAlive ent, ItemStack stack, bool isHeldItem, XUiC_ItemStack stackController) => true;
++}
++
++public class ItemActionOpenLootBundle : ItemAction
++{
++    public bool ExecuteInstantAction(EntityAlive ent, ItemStack stack, bool isHeldItem, XUiC_ItemStack stackController) => true;
 +}
 +
 +public class ItemInventoryData
@@ -170,6 +182,31 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public static GameManager Instance { get; set; }
 +}
 +
++public class Inventory
++{
++    private ItemStack[] _slots = System.Array.Empty<ItemStack>();
++    public ItemStack[] GetSlots() => _slots ?? System.Array.Empty<ItemStack>();
++    public ItemStack GetItemStack(int idx)
++    {
++        if (_slots == null || idx < 0 || idx >= _slots.Length) return ItemStack.Empty;
++        return _slots[idx] ?? ItemStack.Empty;
++    }
++    public void SetItem(int idx, ItemStack itemStack)
++    {
++        if (_slots == null || idx < 0) return;
++        if (idx >= _slots.Length) System.Array.Resize(ref _slots, idx + 1);
++        _slots[idx] = itemStack;
++    }
++    public void SetSlots(ItemStack[] slots, bool allowSettingDummySlot) { _slots = slots ?? System.Array.Empty<ItemStack>(); }
++    public void Changed() { }
++}
++
++public class Bag
++{
++    public ItemStack[] GetSlots() => null;
++    public void SetSlot(int idx, ItemStack itemStack, bool _callChangedEvent) { }
++}
++
 +public interface ITileEntityLootable { }
 +
 +public class TileEntityLootContainer : ITileEntityLootable
@@ -186,6 +223,9 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +
 +public class EntityAlive
 +{
++    public Inventory inventory { get; set; }
++    public Bag bag { get; set; }
++
 +    public EntityAlive() { }
 +}
 +
@@ -197,6 +237,10 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +}
 +
 +// --- XUi types ---
++
++public class XUi
++{
++}
 +
 +public class XUiC_LootWindowGroup
 +{
@@ -235,3 +279,5 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +{
 +    public Mod() { }
 +}
++
++
