@@ -34,7 +34,7 @@ See `src/Config.xml` and `ModConfig.cs`:
 - **ReadMagazines** — Include magazines
 - **ReadSchematics** — Include schematics and recipes
 - **DebugMode** — Verbose logging
-- **Visualization**: Enabled, duration, max visible, and per-kind colors (ColorBook, ColorMagazine, ColorRecipe, ColorSchematic as hex in Config.xml)
+- **Visualization**: Enabled, duration, max visible, and per-kind colors (ColorBook, ColorMagazine, ColorSchematic, and ColorRecipe (which is the base/default) as hex in Config.xml)
 
 ## Testing Strategy
 
