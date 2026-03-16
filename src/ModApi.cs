@@ -17,6 +17,16 @@ namespace AutoReadMod
             {
                 var harmony = new Harmony("com.learninggrounds.autoreadmod");
                 harmony.PatchAll(Assembly.GetExecutingAssembly());
+                var updateTarget = XUiUpdatePatch.FindUpdateTarget();
+                if (updateTarget != null)
+                {
+                    harmony.Patch(updateTarget, postfix: new HarmonyMethod(typeof(XUiUpdatePatch), "Postfix"));
+                    SafeLog("Per-frame update patch applied");
+                }
+                else
+                {
+                    SafeLog("Per-frame update target not found (deferred container + visualization may not run)");
+                }
                 SafeLog("Harmony patches applied");
             }
             catch (Exception ex)

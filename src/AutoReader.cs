@@ -18,7 +18,7 @@ namespace AutoReadMod
         public static void ProcessContainer(EntityPlayer player, TileEntityLootContainer container)
         {
             DebugLog($"ProcessContainer called, Enabled={ModConfig.Instance.Enabled}");
-            
+
             if (!ModConfig.Instance.Enabled)
             {
                 DebugLog("Mod is disabled in config");
@@ -34,7 +34,7 @@ namespace AutoReadMod
             var itemsToRead = FindReadableSlotIndices(container.items);
 
             DebugLog($"Found {itemsToRead.Count} readable items");
-            
+
             // Read items (in reverse to avoid index issues when removing)
             for (int i = itemsToRead.Count - 1; i >= 0; i--)
             {
@@ -281,7 +281,7 @@ namespace AutoReadMod
                 }
 
                 var kind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
-                EmitVisualizationEvent(itemClass, itemValue, successfulConsumes, source, kind);
+                EmitVisualizationEvent(itemClass, itemValue, successfulConsumes, source, kind); // Note: This emits immediately, which for "search" containers is before the inventory UI is opened.
             }
             catch (Exception ex)
             {
@@ -435,7 +435,7 @@ namespace AutoReadMod
         {
             if (!ModConfig.Instance.DebugMode)
                 return;
-                
+
             SafeLog($"[DEBUG] {message}");
         }
     }

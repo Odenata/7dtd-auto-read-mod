@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
@@ -33,6 +34,7 @@ namespace AutoReadMod
 
         public static void OnUpdate(object xui)
         {
+            ContainerOpenPatchShared.ProcessDeferredContainer();
             if (xui == null || !ModConfig.Instance.VisualizationEnabled)
             {
                 return;
@@ -680,27 +682,55 @@ namespace AutoReadMod
     }
 
     /// <summary>
-    /// Patches XUi.Update so we drain the visualization queue each frame and show icons via CollectedItemList.
+    /// Per-frame update: runs deferred container processing and drains the visualization queue.
+    /// Applied manually in ModApi so we only patch when a valid target method is found (avoids "method null" failure).
     /// </summary>
-    [HarmonyPatch]
     internal static class XUiUpdatePatch
     {
-        static System.Reflection.MethodBase TargetMethod()
+        internal static MethodBase FindUpdateTarget()
         {
-            var type = typeof(XUi);
-            var update = type.GetMethod("Update", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            if (update != null)
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var empty = System.Array.Empty<Type>();
+            var floatArg = new[] { typeof(float) };
+
+            var xuiType = typeof(XUi);
+            var m = xuiType.GetMethod("Update", flags, null, empty, null);
+            if (m != null) return m;
+            m = xuiType.GetMethod("Update", flags, null, floatArg, null);
+            if (m != null) return m;
+            m = xuiType.GetMethod("OnUpdateDeltaTime", flags, null, empty, null);
+            if (m != null) return m;
+            m = xuiType.GetMethod("OnUpdateDeltaTime", flags, null, floatArg, null);
+            if (m != null) return m;
+
+            foreach (var method in xuiType.GetMethods(flags))
             {
-                return update;
+                if (method.Name != null && method.Name.IndexOf("Update", StringComparison.OrdinalIgnoreCase) >= 0
+                    && method.GetParameters().Length <= 1)
+                    return method;
             }
 
-            var onUpdate = type.GetMethod("OnUpdateDeltaTime", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            return onUpdate;
+            var gmType = typeof(GameManager);
+            m = gmType.GetMethod("Update", flags, null, empty, null);
+            if (m != null) return m;
+            m = gmType.GetMethod("Update", flags, null, floatArg, null);
+            if (m != null) return m;
+
+            foreach (var method in gmType.GetMethods(flags))
+            {
+                if (method.Name != null && method.Name.IndexOf("Update", StringComparison.OrdinalIgnoreCase) >= 0
+                    && method.GetParameters().Length <= 1)
+                    return method;
+            }
+
+            return null;
         }
 
-        static void Postfix(XUi __instance)
+        public static void Postfix(object __instance)
         {
-            AutoReadVisualizationOverlay.OnUpdate(__instance);
+            object xui = __instance is XUi xu ? xu : GameReflection.GetLocalPlayerXUi();
+            ContainerOpenPatchShared.ProcessDeferredContainer();
+            AutoReadVisualizationOverlay.OnUpdate(xui);
         }
     }
 }
