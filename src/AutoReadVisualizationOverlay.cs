@@ -24,6 +24,8 @@ namespace AutoReadMod
 
         private static float _lastCollectedListNullLogTime = -999f;
         private const float CollectedListNullLogIntervalSeconds = 10f;
+        /// <summary>Rows already matched this frame when styling vanilla bundle notifications (same class, multiple stacks).</summary>
+        private static readonly HashSet<int> DecorateVanillaUsedIndices = new HashSet<int>();
 
         private sealed class PendingColor
         {
@@ -58,8 +60,22 @@ namespace AutoReadMod
                 maxVisible = 8;
             }
 
-            while (shown < maxVisible && AutoReadVisualizationQueue.TryDequeue(out var evt))
+            DecorateVanillaUsedIndices.Clear();
+
+            while (AutoReadVisualizationQueue.TryDequeue(out var evt))
             {
+                if (evt.DecorateVanillaEntryOnly)
+                {
+                    TryDecorateVanillaBundleRow(collectedList, evt);
+                    continue;
+                }
+
+                if (shown >= maxVisible)
+                {
+                    AutoReadVisualizationQueue.Enqueue(evt);
+                    break;
+                }
+
                 if (ModConfig.Instance.DebugMode)
                 {
                     try { UnityEngine.Debug.Log($"[AutoReadMod] Visualization: dequeued event {evt.ItemClassName ?? evt.IconName}, ItemValue={evt.ItemValue != null}"); } catch { }
@@ -105,7 +121,7 @@ namespace AutoReadMod
 
                 if (!added && !string.IsNullOrEmpty(evt.IconName))
                 {
-                    added = TryAddIconNotification(collectedList, evt.IconName, evt.Count);
+                    added = TryAddIconNotification(collectedList, evt.IconName, evt.Count > 0 ? evt.Count : 1);
                 }
 
                 if (added)
@@ -155,6 +171,125 @@ namespace AutoReadMod
             if (source == AutoReadVisualizationSource.Bundle)
                 return items[0];
             return items[items.Count - 1];
+        }
+
+        /// <summary>
+        /// Match vanilla CollectedItemList row to auto-read item (by ItemStack class or uiAtlasIcon), apply type color, strip trailing "(N)".
+        /// </summary>
+        private static void TryDecorateVanillaBundleRow(object collectedList, AutoReadVisualizationEvent evt)
+        {
+            try
+            {
+                var items = GetItemsList(collectedList);
+                if (items == null || string.IsNullOrEmpty(evt.ItemClassName))
+                {
+                    return;
+                }
+
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (DecorateVanillaUsedIndices.Contains(i))
+                    {
+                        continue;
+                    }
+
+                    object row = items[i];
+                    if (!CollectedDataRowMatchesEvent(row, evt))
+                    {
+                        continue;
+                    }
+
+                    DecorateVanillaUsedIndices.Add(i);
+                    var color = GetColorForKind(evt.Kind);
+                    ApplyColorToEntryAt(collectedList, items, i, color);
+                    StripInventoryParentheticalOnEntry(GetItemGameObjectFromDataRow(row));
+                    PendingColors.Add(new PendingColor { DataRef = row, Color = color, AddedAt = Time.time });
+                    if (ModConfig.Instance.DebugMode)
+                    {
+                        try { UnityEngine.Debug.Log($"[AutoReadMod] Visualization: styled vanilla row i={i} {evt.ItemClassName}"); } catch { }
+                    }
+                    return;
+                }
+            }
+            catch
+            {
+                /* non-critical */
+            }
+        }
+
+        private static object GetMemberValue(object instance, string memberName)
+        {
+            if (instance == null)
+            {
+                return null;
+            }
+
+            var t = instance.GetType();
+            var p = t.GetProperty(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (p != null)
+            {
+                return p.GetValue(instance, null);
+            }
+
+            var f = t.GetField(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            return f?.GetValue(instance);
+        }
+
+        private static object GetItemGameObjectFromDataRow(object dataRow)
+        {
+            if (dataRow == null)
+            {
+                return null;
+            }
+
+            foreach (var name in new[] { "Item", "item" })
+            {
+                var go = GetMemberValue(dataRow, name);
+                if (go != null)
+                {
+                    return go;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool CollectedDataRowMatchesEvent(object dataRow, AutoReadVisualizationEvent evt)
+        {
+            foreach (var name in new[] { "ItemStack", "itemStack" })
+            {
+                var stackObj = GetMemberValue(dataRow, name);
+                if (!(stackObj is ItemStack stack) || stack == null)
+                {
+                    continue;
+                }
+
+                if (stack.IsEmpty())
+                {
+                    continue;
+                }
+
+                var iv = GameReflection.GetItemValue(stack);
+                var ic = GameReflection.GetItemClass(iv);
+                string className = GameReflection.GetItemClassName(ic);
+                if (!string.IsNullOrEmpty(className)
+                    && string.Equals(className, evt.ItemClassName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(evt.IconName))
+            {
+                var icon = GetMemberValue(dataRow, "uiAtlasIcon") as string;
+                if (!string.IsNullOrEmpty(icon)
+                    && string.Equals(icon, evt.IconName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void ReapplyPendingColors(object collectedItemList)

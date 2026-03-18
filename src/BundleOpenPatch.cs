@@ -13,7 +13,7 @@ namespace AutoReadMod
 
         static void Postfix(EntityAlive ent, bool __result, InventorySnapshot __state)
         {
-            BundleOpenPatchShared.ProcessOpenedBundle(ent, __result, __state);
+            BundleOpenPatchShared.ProcessOpenedBundle(ent, __result, __state, "ItemActionOpenBundle");
         }
     }
 
@@ -27,7 +27,7 @@ namespace AutoReadMod
 
         static void Postfix(EntityAlive ent, bool __result, InventorySnapshot __state)
         {
-            BundleOpenPatchShared.ProcessOpenedBundle(ent, __result, __state);
+            BundleOpenPatchShared.ProcessOpenedBundle(ent, __result, __state, "ItemActionOpenLootBundle");
         }
     }
 
@@ -53,7 +53,7 @@ namespace AutoReadMod
                 InventorySlotSnapshotCollection.Capture(GameReflection.GetBagSlots(bag)));
         }
 
-        internal static void ProcessOpenedBundle(EntityAlive entity, bool wasSuccessful, InventorySnapshot beforeSnapshot)
+        internal static void ProcessOpenedBundle(EntityAlive entity, bool wasSuccessful, InventorySnapshot beforeSnapshot, string bundlePatchSource = null)
         {
             if (beforeSnapshot == null)
             {

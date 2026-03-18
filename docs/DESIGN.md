@@ -24,7 +24,7 @@ The mod identifies readable items (books, magazines, schematics, recipes), appli
 - **Removal**:
   - loot containers: update the container slot after successful consumes
   - bundle outputs in player inventory: update only the added quantity so existing stacked items remain intact
-- **Visualization**: When items are auto-read, the mod enqueues events and renders them in the game’s collected-item notification list (same area as loot pickups). Type-based label color comes from config (hex per kind: book, magazine, recipe, schematic). Color and “(0)” strip are re-applied each frame for a short window so they stick if the game rebinds. For containers the list is append (newest at end); for bundle opens the list is prepend (newest at index 0), so we track bundle entries by index for re-apply.
+- **Visualization**: Container reads enqueue full rows (`AddItemStack` + type color + strip trailing `(N)`). **Bundle reads**: vanilla already shows loot rows; mod only enqueues **decorate-only** events (match `CollectedItemList+Data` by `ItemStack` / icon, color + strip `(N)`). No config branch—avoids merged duplicate counts from a second `AddItemStack`.
 
 ## Configuration
 
@@ -35,7 +35,7 @@ See `src/Config.xml` and `ModConfig.cs`:
 - **ReadMagazines** — Include magazines
 - **ReadSchematics** — Include schematics and recipes
 - **DebugMode** — Verbose logging
-- **Visualization**: Enabled, max visible, and per-kind colors (ColorBook, ColorMagazine, ColorSchematic, and ColorRecipe (which is the base/default) as hex in Config.xml)
+- **Visualization**: Enabled, max visible, per-kind colors (hex in Config.xml)
 
 ## Testing Strategy
 

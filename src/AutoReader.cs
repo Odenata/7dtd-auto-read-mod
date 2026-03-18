@@ -423,6 +423,14 @@ namespace AutoReadMod
             string localizedName = itemClass.GetLocalizedItemName();
             string iconName = GameReflection.GetItemIconName(itemClass);
 
+            if (source == AutoReadVisualizationSource.Bundle)
+            {
+                AutoReadVisualizationQueue.Enqueue(new AutoReadVisualizationEvent(
+                    itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue,
+                    decorateVanillaEntryOnly: true));
+                return;
+            }
+
             var evt = new AutoReadVisualizationEvent(itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue);
             AutoReadVisualizationQueue.Enqueue(evt);
             if (ModConfig.Instance.DebugMode)

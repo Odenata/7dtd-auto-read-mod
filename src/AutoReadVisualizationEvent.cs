@@ -25,6 +25,11 @@ namespace AutoReadMod
         /// <summary>When non-null, use this to build ItemStack for AddItemStack (avoids name lookup).</summary>
         public ItemValue ItemValue { get; }
 
+        /// <summary>
+        /// When true, do not AddItemStack — find the vanilla CollectedItemList row for this item (bundle loot) and apply mod color + strip inventory parenthetical.
+        /// </summary>
+        public bool DecorateVanillaEntryOnly { get; }
+
         public AutoReadVisualizationEvent(
             string itemKey,
             string itemClassName,
@@ -33,16 +38,18 @@ namespace AutoReadMod
             int count,
             AutoReadVisualizationSource source,
             AutoReader.ReadableItemKind kind,
-            ItemValue itemValue = null)
+            ItemValue itemValue = null,
+            bool decorateVanillaEntryOnly = false)
         {
             ItemKey = itemKey ?? string.Empty;
             ItemClassName = itemClassName ?? string.Empty;
             LocalizedItemName = localizedItemName ?? string.Empty;
             IconName = iconName ?? string.Empty;
-            Count = count > 0 ? count : 1;
+            Count = count > 0 ? count : (decorateVanillaEntryOnly ? 0 : 1);
             Source = source;
             Kind = kind;
             ItemValue = itemValue;
+            DecorateVanillaEntryOnly = decorateVanillaEntryOnly;
         }
     }
 }

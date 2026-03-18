@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <AutoReadModConfig>
   <!-- Turn the whole mod on or off without uninstalling. Values: true, false -->
   <Enabled>true</Enabled>
@@ -17,7 +17,7 @@
   <Visualization>
     <!-- Show or hide the notifications. Values: true, false -->
     <Enabled>true</Enabled>
-
+    <!-- false = no duplicate CollectedItemList rows for bundle reads (recommended). true = legacy (counts can double). -->
     <!-- Maximum number of notifications shown at once (older ones drop off). Values: positive number, e.g. 8 -->
     <MaxVisible>8</MaxVisible>
 

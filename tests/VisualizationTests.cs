@@ -50,14 +50,19 @@ namespace AutoReadMod.Tests
         }
 
         [Fact]
-        public void ProcessOpenedBundle_OnSuccessfulRead_EnqueuesEventWithSourceBundle()
+        public void ProcessOpenedBundle_EnqueuesDecorateOnlyBundleVisualization()
         {
             DrainQueue();
-            var originalConfig = ModConfig.Instance;
             var originalGameManager = GameManager.Instance;
-
             try
             {
+                GameManager.Instance = new GameManager();
+                var inventory = CreateInventory(
+                    CreateStack("bookFiremansAlmanacHeat", 3),
+                    CreateStack("resourceWood", 50));
+                var player = CreatePlayer(inventory);
+                var snapshot = BundleOpenPatchShared.CaptureInventorySnapshot(player);
+                inventory.SetItem(0, CreateStack("bookFiremansAlmanacHeat", 5));
                 SetConfig(new ModConfig
                 {
                     Enabled = true,
@@ -65,26 +70,17 @@ namespace AutoReadMod.Tests
                     ReadMagazines = true,
                     ReadSchematics = true,
                 });
-                GameManager.Instance = new GameManager();
-
-                var inventory = CreateInventory(
-                    CreateStack("bookFiremansAlmanacHeat", 3),
-                    CreateStack("resourceWood", 50));
-                var player = CreatePlayer(inventory);
-                var snapshot = BundleOpenPatchShared.CaptureInventorySnapshot(player);
-
-                inventory.SetItem(0, CreateStack("bookFiremansAlmanacHeat", 5));
-
                 BundleOpenPatchShared.ProcessOpenedBundle(player, true, snapshot);
-
                 var events = AutoReadVisualizationQueue.DequeueAllForTest();
-                Assert.NotEmpty(events);
-                var bundleEvent = events.Find(e => e.Source == AutoReadVisualizationSource.Bundle && e.ItemClassName == "bookFiremansAlmanacHeat");
-                Assert.NotNull(bundleEvent);
-                Assert.Equal(2, bundleEvent.Count);
-                Assert.Equal("bookFiremansAlmanacHeat", bundleEvent.ItemClassName);
-                Assert.Equal(AutoReader.ReadableItemKind.Book, bundleEvent.Kind);
-                Assert.NotNull(bundleEvent.ItemValue);
+                var decorateEvt = events.Find(e =>
+                    e.Source == AutoReadVisualizationSource.Bundle
+                    && e.DecorateVanillaEntryOnly
+                    && e.ItemClassName == "bookFiremansAlmanacHeat");
+                Assert.NotNull(decorateEvt);
+                Assert.Equal(2, decorateEvt.Count);
+                Assert.Equal(AutoReader.ReadableItemKind.Book, decorateEvt.Kind);
+                Assert.DoesNotContain(events, e =>
+                    e.Source == AutoReadVisualizationSource.Bundle && !e.DecorateVanillaEntryOnly);
             }
             finally
             {
@@ -113,6 +109,7 @@ namespace AutoReadMod.Tests
             Assert.Equal(AutoReadVisualizationSource.Container, evt.Source);
             Assert.Equal(AutoReader.ReadableItemKind.Book, evt.Kind);
             Assert.Null(evt.ItemValue);
+            Assert.False(evt.DecorateVanillaEntryOnly);
         }
 
         private static void DrainQueue()
