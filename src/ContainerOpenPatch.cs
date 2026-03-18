@@ -43,14 +43,45 @@ namespace AutoReadMod
         private static EntityPlayer _deferredPlayer;
         private static TileEntityLootContainer _deferredContainer;
         private static int _deferredFramesLeft;
-        private const int MaxDeferredFrames = 5;
 
-        /// <summary>Called once per frame from XUi Update. Runs auto-read for a container that was opened empty (e.g. untouched, loot filled after open).</summary>
+        /// <summary>Frames to wait for loot to populate after opening an empty container (~3s at 60fps).</summary>
+        internal const int MaxDeferredFrames = 180;
+
+        internal static bool HasNonEmptyLootItems(TileEntityLootContainer container)
+        {
+            if (container?.items == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < container.items.Length; i++)
+            {
+                var s = container.items[i];
+                if (s != null && !s.IsEmpty())
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Called once per frame from XUi Update. When loot was empty at open, waits until items appear then auto-reads once.</summary>
         internal static void ProcessDeferredContainer()
         {
             if (_deferredPlayer == null || _deferredContainer == null)
+            {
                 return;
-            ProcessLootContainer(_deferredPlayer, _deferredContainer);
+            }
+
+            if (HasNonEmptyLootItems(_deferredContainer))
+            {
+                ProcessLootContainer(_deferredPlayer, _deferredContainer);
+                _deferredPlayer = null;
+                _deferredContainer = null;
+                return;
+            }
+
             _deferredFramesLeft--;
             if (_deferredFramesLeft <= 0)
             {

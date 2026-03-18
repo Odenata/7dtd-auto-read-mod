@@ -4,6 +4,7 @@ AutoReadMod forces the player to automatically read books, magazines, schematics
 
 - **Project overview**: `docs/PROJECT_OVERVIEW.md`
 - **Design notes**: `docs/DESIGN.md`
+- **Future / deferred ideas**: `docs/FUTURE_WORK.md`
 
 ## Prerequisites
 

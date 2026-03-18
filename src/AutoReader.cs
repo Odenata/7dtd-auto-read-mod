@@ -269,25 +269,31 @@ namespace AutoReadMod
                     return;
                 }
 
-                var remaining = Math.Max(0, currentCount - successfulConsumes);
-                if (remaining == 0)
+                // ItemStack.count was decremented in place by ItemActionEat.ExecuteInstantAction(isHeldItem:false).
+                if (itemStack.IsEmpty())
                 {
                     updateStack(GameReflection.GetEmptyItemStack());
                 }
                 else
                 {
-                    updateStack(new ItemStack(itemValue, remaining));
-                    DebugLog($"Reduced stack to {remaining}");
+                    updateStack(itemStack);
+                    DebugLog($"Reduced stack to {GameReflection.GetItemCount(itemStack)}");
                 }
 
                 var kind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
-                EmitVisualizationEvent(itemClass, itemValue, successfulConsumes, source, kind); // Note: This emits immediately, which for "search" containers is before the inventory UI is opened.
+                EmitVisualizationEvent(itemClass, itemValue, successfulConsumes, source, kind);
             }
             catch (Exception ex)
             {
                 SafeLog($"Error reading {itemName}: {ex.Message}");
                 DebugLog($"Stack trace: {ex.StackTrace}");
             }
+        }
+
+        /// <summary>For unit tests (mock + optional real DLL). Production uses ApplyReadableEffects via ReadStack.</summary>
+        internal static int ApplyReadableEffectsForTest(EntityPlayer player, ItemStack itemStack, int consumeCount)
+        {
+            return ApplyReadableEffects(player, itemStack, consumeCount);
         }
 
         private static int ApplyReadableEffects(EntityPlayer player, ItemStack itemStack, int consumeCount)
@@ -324,34 +330,52 @@ namespace AutoReadMod
                 return 0;
             }
 
-            DebugLog($"Found ItemActionEat, will consume {consumeCount} items");
+            var executeMethod = eatAction.GetType().GetMethod(
+                "ExecuteInstantAction",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new[] { typeof(EntityAlive), typeof(ItemStack), typeof(bool), typeof(XUiC_ItemStack) },
+                null);
+            if (executeMethod == null || executeMethod.ReturnType != typeof(bool))
+            {
+                SafeLog($"ItemActionEat.ExecuteInstantAction(bool) not found for {itemName}");
+                return 0;
+            }
+
+            DebugLog($"Found ItemActionEat.ExecuteInstantAction, will consume up to {consumeCount} from stack");
 
             int successfulConsumes = 0;
             var gameManager = (object)GameReflection.GetGameManagerInstance();
 
             for (int i = 0; i < consumeCount; i++)
             {
+                if (itemStack == null || itemStack.IsEmpty())
+                {
+                    break;
+                }
+
                 DebugLog($"Consuming item {i + 1}/{consumeCount}");
                 try
                 {
-                    var singleStack = new ItemStack(itemValue, 1);
-                    if (!TryConsumeEatAction(eatAction, itemClass, singleStack, gameManager, player, itemValue))
+                    var ret = executeMethod.Invoke(eatAction, new object[] { player, itemStack, false, null });
+                    if (ret is not bool ok || !ok)
                     {
-                        var invData = GameReflection.CreateItemInventoryData(itemClass, singleStack, gameManager, player, -1, itemValue);
-                        if (invData == null)
+                        break;
+                    }
+
+                    // Vanilla ItemActionEat skips onSelfPrimaryActionEnd when stackController is null; books need it for perk XML.
+                    var invData = GameReflection.CreateItemInventoryData(itemClass, itemStack, gameManager, player, -1, GameReflection.GetItemValue(itemStack));
+                    if (invData != null)
+                    {
+                        var evtParams = GameReflection.CreateMinEventParams(player, GameReflection.GetItemValue(itemStack), invData);
+                        if (evtParams != null)
                         {
-                            throw new InvalidOperationException("Failed to create ItemInventoryData.");
+                            itemClass.FireEvent(MinEventTypes.onSelfPrimaryActionEnd, evtParams);
                         }
-                        var evtParams = GameReflection.CreateMinEventParams(player, itemValue, invData);
-                        if (evtParams == null)
-                        {
-                            throw new InvalidOperationException("Failed to create MinEventParams.");
-                        }
-                        itemClass.FireEvent(MinEventTypes.onSelfPrimaryActionEnd, evtParams);
                     }
 
                     successfulConsumes++;
-                    DebugLog($"Successfully applied effect for item {i + 1}/{consumeCount}");
+                    DebugLog($"Successfully applied effect for item {successfulConsumes}/{consumeCount}");
                 }
                 catch (Exception consumeEx)
                 {
@@ -362,31 +386,6 @@ namespace AutoReadMod
             }
 
             return successfulConsumes;
-        }
-
-        private static bool TryConsumeEatAction(object eatAction, ItemClass itemClass, ItemStack singleStack, object gameManager, EntityPlayer player, ItemValue itemValue)
-        {
-            try
-            {
-                var invData = GameReflection.CreateItemInventoryData(itemClass, singleStack, gameManager, player, -1, itemValue);
-                if (invData == null)
-                {
-                    return false;
-                }
-
-                var actionData = GameReflection.InvokeMethod(eatAction, "CreateModifierData", invData, 0);
-                if (actionData == null)
-                {
-                    return false;
-                }
-
-                GameReflection.InvokeMethod(eatAction, "consume", actionData);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
         }
 
         private static Exception UnwrapReflectionException(Exception exception)

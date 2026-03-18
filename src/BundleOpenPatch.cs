@@ -60,6 +60,11 @@ namespace AutoReadMod
                 return;
             }
 
+            if (!wasSuccessful)
+            {
+                return;
+            }
+
             var player = entity as EntityPlayer;
             var inventory = GameReflection.GetInventory(player);
             var bag = GameReflection.GetBag(player);
