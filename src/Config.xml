@@ -17,7 +17,6 @@
   <Visualization>
     <!-- Show or hide the notifications. Values: true, false -->
     <Enabled>true</Enabled>
-    <!-- false = no duplicate CollectedItemList rows for bundle reads (recommended). true = legacy (counts can double). -->
     <!-- Maximum number of notifications shown at once (older ones drop off). Values: positive number, e.g. 8 -->
     <MaxVisible>8</MaxVisible>
 

@@ -33,9 +33,9 @@ The mod identifies readable items (books, magazines, schematics, recipes), appli
 See `src/Config.xml` and `ModConfig.cs`:
 
 - **Enabled** — Enable/disable overall behavior
-- **ReadBooks** — Include books
-- **ReadMagazines** — Include magazines
-- **ReadSchematics** — Include schematics and recipes
+- **ItemTypes/Books** — Include books
+- **ItemTypes/Magazines** — Include magazines
+- **ItemTypes/Schematics** — Include schematics and recipes
 - **DebugMode** — Verbose logging
 - **Visualization**: Enabled, max visible, per-kind colors (hex in Config.xml)
 

@@ -2,63 +2,59 @@
 
 AutoReadMod forces the player to automatically read books, magazines, schematics, and recipes when they open a loot container.
 
-- **Project overview**: `docs/PROJECT_OVERVIEW.md`
-- **Design notes**: `docs/DESIGN.md`
-- **Future / deferred ideas**: `docs/FUTURE_WORK.md`
+Release zip names use the **mod version**. See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for tested 7 Days to Die versions.
 
-## Prerequisites
+## Install
 
-- **.NET SDK** (for `dotnet build` / `dotnet test`)
-- **.NET Framework 4.7.2 Developer Pack** — the mod targets `net472`; the SDK alone is not enough.
-  Install: [.NET Framework 4.7.2 Developer Pack](https://dotnet.microsoft.com/download/dotnet-framework/net472) (choose "Developer Pack").
-  If you skip this, the build will fail with MSB3644; `.\tools\build.ps1` will print the same install link.
-- A local **7 Days to Die** install (only needed for deploy/integration testing)
+1. Turn Easy Anti-Cheat off. Harmony DLL mods require EAC disabled.
+2. Extract the release zip into your 7 Days to Die `Mods` folder.
+3. Verify this layout:
 
-Optional:
-
-- Bazel for hermetic unit/tool tests
-
-## Dependencies
-
-This mod uses `7dtd-mod-dev-tools` in two different ways:
-
-- **Local build/deploy**: `tools/build.ps1`, `deploy.ps1`, `test-integration.ps1` still delegate to a sibling `../7dtd-mod-dev-tools` checkout
-- **Hermetic Bazel tests**: `MODULE.bazel` fetches pinned external repos for mock assemblies, Harmony, the xUnit runner, and xUnit libraries
-
-## Build
-
-From repo root:
-
-```powershell
-.\tools\build.ps1 -Configuration Release
+```text
+<7 Days To Die>\Mods\AutoReadMod\
+  0Harmony.dll
+  AutoReadMod.dll
+  Config.xml
+  ModInfo.xml
 ```
 
-## Unit tests
+If the `Mods` folder does not exist, create it next to `7DaysToDie.exe`.
 
-Hermetic Bazel suites:
+## Configuration
 
-```powershell
-bazel test //tests:unit
-bazel test //tests:tools
-```
+Edit `Mods\AutoReadMod\Config.xml` after installing.
 
-Those Bazel tests are intentionally wired through explicit pinned repositories in `MODULE.bazel` instead of extension-generated `use_repo(...)` imports, so `bazel mod tidy` does not strip out required xUnit dependencies.
+- `Enabled`: turns the whole mod on or off without uninstalling.
+- `DebugMode`: writes extra troubleshooting logs.
+- `ItemTypes`: choose whether books, magazines, and schematics/recipes are auto-read.
+- `Visualization`: controls the on-screen notification list and colors.
 
-IDE/editor compatibility path:
+Restart the game after changing the config.
 
-```powershell
-dotnet test .\tests\AutoReadMod.Tests.csproj -c Release
-```
+## Multiplayer
 
-## Deploy (integration smoke testing)
+Install the same mod version on the server and every client that should use it. EAC must be off for the server and clients. Unfortunately this means it is not crossplay.
 
-Set the game install dir (recommended):
+This mod is primarily client-side. If a server owner wants consistent behavior, keep `Config.xml` aligned across installs.
 
-- `7_DAYS_TO_DIE_GAME_PATH="C:\Program Files (x86)\Steam\steamapps\common\7 Days To Die"`
+## Update Or Uninstall
 
-Then:
+To update, replace the old `Mods\AutoReadMod` folder with the new release contents. Preserve your old `Config.xml` only after checking whether the new release changed configuration keys.
 
-```powershell
-.\tools\deploy.ps1 -Configuration Release
-.\tools\test-integration.ps1 -TimeoutSeconds 60
-```
+To uninstall, delete `Mods\AutoReadMod`.
+
+## Troubleshooting
+
+- If the mod does not load, confirm the folder layout above and that EAC is disabled.
+- If items are not auto-read, check `Enabled` and the relevant `ItemTypes` entries in `Config.xml`.
+- If you need more detail, set `DebugMode` to `true`, reproduce the issue, then inspect the game log for `AutoReadMod` messages.
+
+## Maintainers
+
+Build, test, deploy, and publishing workflows live in:
+
+- [`docs/DEVELOPING.md`](docs/DEVELOPING.md)
+- [`docs/PUBLISHING.md`](docs/PUBLISHING.md)
+- [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)
+- [`docs/DESIGN.md`](docs/DESIGN.md)
+- [`docs/FUTURE_WORK.md`](docs/FUTURE_WORK.md)

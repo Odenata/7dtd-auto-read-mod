@@ -8,6 +8,13 @@ AutoReadMod automatically reads books, magazines, schematics, and recipes when y
 - Keep the build/deploy workflow reproducible and portable.
 - Keep hermetic unit/tool tests Bazel-owned and mock-based.
 
+## Maintainer docs
+
+- [`DEVELOPING.md`](DEVELOPING.md): build, test, deploy, and integration smoke workflow.
+- [`PUBLISHING.md`](PUBLISHING.md): release checklist and zip layout.
+- [`COMPATIBILITY.md`](COMPATIBILITY.md): mod version vs game version table.
+- [`DESIGN.md`](DESIGN.md): runtime behavior and test strategy.
+
 ## Build requirements
 
 - **Windows:** For `bazel build //...` or `bazel test ...` to succeed, Bazel’s test infrastructure needs a shell toolchain. Set **`BAZEL_SH`** to the path of `bash.exe` before running Bazel, e.g. for Git for Windows:

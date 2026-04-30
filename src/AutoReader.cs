@@ -317,7 +317,7 @@ namespace AutoReadMod
             object eatAction = null;
             foreach (var action in itemActions)
             {
-                if (action != null && action.GetType().Name == "ItemActionEat")
+                if (action is ItemActionEat)
                 {
                     eatAction = action;
                     break;
@@ -358,7 +358,7 @@ namespace AutoReadMod
                 try
                 {
                     var ret = executeMethod.Invoke(eatAction, new object[] { player, itemStack, false, null });
-                    if (ret is not bool ok || !ok)
+                    if (!(ret is bool ok) || !ok)
                     {
                         break;
                     }

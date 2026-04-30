@@ -2,11 +2,23 @@
 **/bin/
 **/obj/
 dist/
+prepared_mod_files/
+*.zip
 bazel-*
+/bazel-bin
+/bazel-out
+/bazel-testlogs
+.bazelrc.user
+
+# Local environment
+.env
+.env.*
 
 # Visual Studio / Rider
 .vs/
 .idea/
+.cursor/
+.cursorignore
 *.suo
 *.user
 *.userosscache
@@ -16,6 +28,9 @@ bazel-*
 TestResults/
 *.trx
 coverage.xml
+coverage.cobertura.xml
+.coverage
+.coverage.*
 
 # NuGet
 *.nupkg

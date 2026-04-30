@@ -145,10 +145,28 @@ namespace AutoReadMod.Tests
                     ItemClass = new ItemClass
                     {
                         Name = itemName,
-                        Actions = new ItemActionBase[] { new ItemActionEat() },
+                        Actions = new ItemActionBase[] { new SuccessfulEatAction() },
                     },
                 },
                 count);
+        }
+
+        private sealed class SuccessfulEatAction : ItemActionEat
+        {
+            public new bool ExecuteInstantAction(EntityAlive ent, ItemStack stack, bool isHeldItem, XUiC_ItemStack stackController)
+            {
+                if (stack == null || stack.count <= 0)
+                {
+                    return false;
+                }
+
+                if (!isHeldItem)
+                {
+                    stack.count--;
+                }
+
+                return true;
+            }
         }
 
         private static void SetConfig(ModConfig config)
