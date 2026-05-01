@@ -127,8 +127,11 @@ namespace AutoReadMod
         /// <summary>
         /// Bundle outputs land in toolbelt or backpack; vanilla magazine/recipe progression uses the same
         /// <see cref="ItemActionEat.ExecuteInstantAction"/> path as loot when given the slot's <see cref="XUiC_ItemStack"/>.
-        /// Resolves that controller from <see cref="LocalPlayerUI.activeItemStackGrids"/> (toolbelt vs backpack grid).
+        /// Resolves that controller from <see cref="LocalPlayerUI.activeItemStackGrids"/>.
+        /// Both <see cref="XUiC_Backpack"/> and <see cref="XUiC_Toolbelt"/> are searched: inventory bundle drops
+        /// usually map to the backpack grid; searching only one grid leaves <c>stackController</c> null and breaks skill gains.
         /// </summary>
+        /// <param name="readFromBag">Legacy hint (still accepted); both grids are always searched.</param>
         internal static XUiC_ItemStack TryGetPlayerItemSlotControllerForBundleRead(
             EntityPlayer player,
             int slotIndex,
@@ -159,29 +162,33 @@ namespace AutoReadMod
                     return null;
                 }
 
-                var expectedGridName = readFromBag ? "XUiC_Backpack" : "XUiC_Toolbelt";
+                _ = readFromBag;
 
-                for (var gi = 0; gi < grids.Count; gi++)
+                // Backpack first: bundle-added items typically appear in non-toolbelt inventory slots.
+                foreach (var gridTypeName in new[] { "XUiC_Backpack", "XUiC_Toolbelt" })
                 {
-                    var grid = grids[gi];
-                    if (grid == null || grid.GetType().Name != expectedGridName)
+                    for (var gi = 0; gi < grids.Count; gi++)
                     {
-                        continue;
-                    }
-
-                    var byRef = TryFindItemStackGridControllerByStackReference(grid, liveStack);
-                    if (byRef != null)
-                    {
-                        return byRef;
-                    }
-
-                    var byIdx = TryGetItemStackControllerFromGridAtSlot(grid, slotIndex);
-                    if (byIdx != null)
-                    {
-                        var uiStack = TryGetItemStackFromLootSlotController(byIdx);
-                        if (uiStack != null && ReferenceEquals(uiStack, liveStack))
+                        var grid = grids[gi];
+                        if (grid == null || grid.GetType().Name != gridTypeName)
                         {
-                            return byIdx;
+                            continue;
+                        }
+
+                        var byRef = TryFindItemStackGridControllerByStackReference(grid, liveStack);
+                        if (byRef != null)
+                        {
+                            return byRef;
+                        }
+
+                        var byIdx = TryGetItemStackControllerFromGridAtSlot(grid, slotIndex);
+                        if (byIdx != null)
+                        {
+                            var uiStack = TryGetItemStackFromLootSlotController(byIdx);
+                            if (uiStack != null && ReferenceEquals(uiStack, liveStack))
+                            {
+                                return byIdx;
+                            }
                         }
                     }
                 }
