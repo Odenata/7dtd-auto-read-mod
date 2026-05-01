@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Threading;
 using HarmonyLib;
+using UnityEngine;
 
 namespace AutoReadMod
 {
@@ -33,6 +35,16 @@ namespace AutoReadMod
 
     internal static class BundleOpenPatchShared
     {
+        /// <summary>
+        /// Opening a bundle mutates inventory; callbacks can synchronously re-enter bundle/item paths.
+        /// Processing nested runs can mis-diff snapshots and spam exceptions — skip until the outer run completes.
+        /// </summary>
+        private static int _bundleAutoReadDepth;
+
+        private static float _lastBundleFailureLogTime = -999f;
+        private static float _lastBundleReentrantLogTime = -999f;
+        private const float BundleFailureLogIntervalSeconds = 5f;
+
         internal static InventorySnapshot CaptureInventorySnapshot(EntityAlive entity)
         {
             if (!ModConfig.Instance.Enabled)
@@ -71,7 +83,33 @@ namespace AutoReadMod
                 return;
             }
 
-            ApplyOpenedBundleEffectsImmediately(player, beforeSnapshot);
+            if (Interlocked.Increment(ref _bundleAutoReadDepth) > 1)
+            {
+                Interlocked.Decrement(ref _bundleAutoReadDepth);
+                try
+                {
+                    if (Time.time - _lastBundleReentrantLogTime >= BundleFailureLogIntervalSeconds)
+                    {
+                        _lastBundleReentrantLogTime = Time.time;
+                        Debug.LogWarning("[AutoReadMod] Bundle auto-read skipped (re-entrant/nested inventory callback)");
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                return;
+            }
+
+            try
+            {
+                ApplyOpenedBundleEffectsImmediately(player, beforeSnapshot);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _bundleAutoReadDepth);
+            }
         }
 
         /// <summary>Runs bundle diff + auto-read (shared by <see cref="ProcessOpenedBundle"/> and tests).</summary>
@@ -112,7 +150,11 @@ namespace AutoReadMod
             {
                 try
                 {
-                    UnityEngine.Debug.LogWarning("[AutoReadMod] Bundle auto-read failed (inventory unchanged): " + ex.Message + "\n" + ex.StackTrace);
+                    if (Time.time - _lastBundleFailureLogTime >= BundleFailureLogIntervalSeconds)
+                    {
+                        _lastBundleFailureLogTime = Time.time;
+                        UnityEngine.Debug.LogWarning("[AutoReadMod] Bundle auto-read failed (inventory unchanged): " + ex.Message + "\n" + ex.StackTrace);
+                    }
                 }
                 catch
                 {
