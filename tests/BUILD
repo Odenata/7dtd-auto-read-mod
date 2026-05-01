@@ -25,6 +25,7 @@ XUNIT_DEPS = [
     "@rules_dotnet_framework//dotnet/stdlib.net/net472:system.collections.dll",
     "@rules_dotnet_framework//dotnet/stdlib.net/net472:system.objectmodel.dll",
     "@rules_dotnet_framework//dotnet/stdlib.net/net472:system.runtime.dll",
+    "@rules_dotnet_framework//dotnet/stdlib.net/net472:system.runtime.extensions.dll",
     "@rules_dotnet_framework//dotnet/stdlib.net/net472:system.threading.tasks.dll",
     "@xunit_assert//:net",
     "@xunit_extensibility_core//:net",
@@ -38,7 +39,13 @@ MOD_TEST_DEPS = XUNIT_DEPS + [
 net_xunit_test(
     name = "auto_reader",
     size = "small",
-    srcs = ["AutoReaderTests.cs"],
+    srcs = [
+        "AssemblyInfo.cs",
+        "AutoReaderTests.cs",
+        "AutoReaderBehaviorTests.cs",
+        "BundleOpenPatchTests.cs",
+        "VisualizationTests.cs",
+    ],
     deps = MOD_TEST_DEPS,
     dotnet_context_data = "@rules_dotnet_framework//:net_context_data_net472",
     testlauncher = "@xunit_runner_console//:net",

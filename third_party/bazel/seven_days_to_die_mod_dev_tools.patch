@@ -1,7 +1,7 @@
 diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 --- a/mocks/GameClasses.cs
 +++ b/mocks/GameClasses.cs
-@@ -1,90 +1,189 @@
+@@ -1,90 +1,348 @@
 -// Mock game classes - API signatures only, no implementation
 -// Based on documented API from docs/GAME_API.md
 -
@@ -124,6 +124,7 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +{
 +    public string Name { get; set; }
 +    public string Group { get; set; }
++    public string CraftingSkillGroup { get; set; }
 +    public object ItemTags { get; set; }
 +    public ItemActionBase[] Actions { get; set; }
 +
@@ -140,9 +141,95 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +
 +public class ItemActionEat : ItemActionBase
 +{
++    public bool SimulateInstantActionFailure;
++    public bool SimulateNoDecrement;
++    public bool ReturnFalseAfterInstantAction;
++    public bool SimulateOverDecrement;
++    public bool ConsumeEntireStack;
++    public System.Action<EntityAlive> AfterInstantActionHook;
++    public int ExecuteInstantActionCalls;
++    public int ExecuteActionCalls;
++    public int ConsumeCalls;
++
 +    public ItemActionEat() { }
 +
-+    public void ExecuteInstantAction(EntityAlive ent, ItemStack stack, bool isHeldItem, XUiC_ItemStack stackController) { }
++    public ItemActionData CreateModifierData(ItemInventoryData invData, int indexInEntityOfAction)
++    {
++        return new ItemActionData(invData, indexInEntityOfAction);
++    }
++
++    public virtual void ExecuteAction(ItemActionData actionData, bool released)
++    {
++        ExecuteActionCalls++;
++        consume(actionData);
++    }
++
++    public virtual void consume(ItemActionData actionData)
++    {
++        ConsumeCalls++;
++        if (SimulateInstantActionFailure)
++        {
++            throw new System.InvalidOperationException("Simulated consume failure");
++        }
++
++        var stack = actionData?.invData?.itemStack;
++        if (!SimulateNoDecrement && stack != null && stack.count > 0)
++        {
++            stack.count--;
++        }
++    }
++
++    public virtual bool ExecuteInstantAction(EntityAlive ent, ItemStack stack, bool isHeldItem, XUiC_ItemStack stackController)
++    {
++        ExecuteInstantActionCalls++;
++        if (SimulateInstantActionFailure)
++        {
++            return false;
++        }
++
++        var stackToMutate = stackController?.ItemStack ?? stack;
++        if (!isHeldItem && ConsumeEntireStack && stackToMutate != null)
++        {
++            stackToMutate.count = 0;
++        }
++        else if (!isHeldItem && SimulateOverDecrement && stackToMutate != null)
++        {
++            stackToMutate.count = -1;
++        }
++        else if (!isHeldItem && !SimulateNoDecrement && stackToMutate != null && stackToMutate.count > 0)
++        {
++            stackToMutate.count--;
++        }
++
++        AfterInstantActionHook?.Invoke(ent);
++
++        return !ReturnFalseAfterInstantAction;
++    }
++}
++
++public class ItemActionGainSkill : ItemActionBase
++{
++    public int ExecuteActionCalls;
++    public int AppliedSkillCalls;
++    public bool RequireNonEmptyStack;
++    public bool RequireEventParms;
++    public string[] SkillsToGain { get; set; }
++
++    public ItemActionData CreateModifierData(ItemInventoryData invData, int indexInEntityOfAction)
++    {
++        return new ItemActionData(invData, indexInEntityOfAction);
++    }
++
++    public void ExecuteAction(ItemActionData actionData, bool released)
++    {
++        ExecuteActionCalls++;
++        var hasReadableStack = !RequireNonEmptyStack || (actionData?.invData?.itemStack != null && actionData.invData.itemStack.count > 0);
++        var hasEventParams = !RequireEventParms || (actionData?.EventParms != null && object.ReferenceEquals(actionData.EventParms.ItemActionData, actionData));
++        if (hasReadableStack && hasEventParams)
++        {
++            AppliedSkillCalls++;
++        }
++    }
 +}
 +
 +public class ItemActionOpenBundle : ItemAction
@@ -157,16 +244,40 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +
 +public class ItemInventoryData
 +{
-+    public ItemInventoryData(ItemClass itemClass, ItemStack itemStack, GameManager gameManager, EntityAlive entity, int slotIdx) { }
++    public ItemClass item { get; set; }
++    public ItemStack itemStack { get; set; }
++    public GameManager gameManager { get; set; }
++    public EntityAlive holdingEntity { get; set; }
++    public int slotIdx { get; set; }
++
++    public ItemInventoryData() { }
++
++    public ItemInventoryData(ItemClass itemClass, ItemStack itemStack, GameManager gameManager, EntityAlive entity, int slotIdx)
++    {
++        item = itemClass;
++        this.itemStack = itemStack;
++        this.gameManager = gameManager;
++        holdingEntity = entity;
++        this.slotIdx = slotIdx;
++    }
 +}
 +
 +public class ItemActionData
 +{
-+    public ItemActionData(ItemInventoryData invData, int index) { }
++    public ItemInventoryData invData { get; set; }
++    public int indexInEntityOfAction { get; set; }
++    public MinEventParams EventParms { get; set; }
++
++    public ItemActionData(ItemInventoryData invData, int index)
++    {
++        this.invData = invData;
++        indexInEntityOfAction = index;
++    }
 +}
 +
 +public enum MinEventTypes
 +{
++    onSelfPrimaryActionStart,
 +    onSelfPrimaryActionEnd
 +}
 +
@@ -175,11 +286,50 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public EntityAlive Self { get; set; }
 +    public ItemValue ItemValue { get; set; }
 +    public ItemInventoryData ItemInventoryData { get; set; }
++    public ItemActionData ItemActionData { get; set; }
 +}
 +
 +public class GameManager
 +{
 +    public static GameManager Instance { get; set; }
++    public EntityPlayer myEntityPlayerLocal { get; set; }
++}
++
++public class Progression
++{
++    private readonly System.Collections.Generic.Dictionary<string, ProgressionValue> _values =
++        new System.Collections.Generic.Dictionary<string, ProgressionValue>(System.StringComparer.OrdinalIgnoreCase);
++
++    public ProgressionValue GetProgressionValue(string progressionName)
++    {
++        if (string.IsNullOrWhiteSpace(progressionName))
++        {
++            return null;
++        }
++
++        if (!_values.TryGetValue(progressionName, out var value))
++        {
++            value = new ProgressionValue { name = progressionName, Level = 0, level = 0 };
++            _values[progressionName] = value;
++        }
++
++        return value;
++    }
++
++    public System.Collections.Generic.List<ProgressionValue> ProgressionValueQuickList
++    {
++        get { return new System.Collections.Generic.List<ProgressionValue>(_values.Values); }
++    }
++}
++
++public class ProgressionValue
++{
++    public string name { get; set; }
++    public int Level { get; set; }
++    public int level { get; set; }
++    public float calculatedLevel { get; set; }
++    public int CalculatedLevel(EntityAlive _ea) => System.Math.Max(Level, level);
++    public int CalculatedMaxLevel(EntityAlive _ea) => 100;
 +}
 +
 +public class Inventory
@@ -203,8 +353,15 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +
 +public class Bag
 +{
-+    public ItemStack[] GetSlots() => null;
-+    public void SetSlot(int idx, ItemStack itemStack, bool _callChangedEvent) { }
++    private ItemStack[] _slots = System.Array.Empty<ItemStack>();
++    public ItemStack[] GetSlots() => _slots ?? System.Array.Empty<ItemStack>();
++    public void SetSlot(int idx, ItemStack itemStack, bool _callChangedEvent)
++    {
++        if (idx < 0) return;
++        if (idx >= _slots.Length) System.Array.Resize(ref _slots, idx + 1);
++        _slots[idx] = itemStack;
++    }
++    public void SetSlots(ItemStack[] slots) { _slots = slots ?? System.Array.Empty<ItemStack>(); }
 +}
 +
 +public interface ITileEntityLootable { }
@@ -225,6 +382,7 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +{
 +    public Inventory inventory { get; set; }
 +    public Bag bag { get; set; }
++    public Progression Progression { get; set; } = new Progression();
 +
 +    public EntityAlive() { }
 +}
@@ -265,6 +423,7 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +
 +public class XUiC_ItemStack
 +{
++    public ItemStack ItemStack { get; set; }
 +    public XUiC_ItemStack() { }
 +}
 +

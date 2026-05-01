@@ -5,11 +5,255 @@ namespace AutoReadMod
 {
     internal static class GameReflection
     {
+        private static PropertyInfo _xUiItemStackItemStackProperty;
+
         internal static EntityPlayer GetPlayerFromLootWindowGroup(XUiC_LootWindowGroup lootWindowGroup)
         {
             var xui = GetMemberValue<object>(lootWindowGroup, "xui");
             var playerUi = GetMemberValue<object>(xui, "playerUI");
             return GetMemberValue<EntityPlayer>(playerUi, "entityPlayer");
+        }
+
+        /// <summary>
+        /// Loot UI slot controller for <paramref name="slotIndex"/> — vanilla <c>ItemActionEat.ExecuteInstantAction</c> expects this when reading from an open loot grid (magazines/skills).
+        /// </summary>
+        internal static XUiC_ItemStack TryGetLootSlotItemStackController(XUiC_LootWindowGroup lootWindowGroup, int slotIndex)
+        {
+            if (lootWindowGroup == null || slotIndex < 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                var controllers = TryGetLootItemStackControllersArray(lootWindowGroup);
+                if (controllers == null || slotIndex >= controllers.Length)
+                {
+                    return null;
+                }
+
+                return controllers.GetValue(slotIndex) as XUiC_ItemStack;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// When slot index does not line up with UI grids (some containers), match the open loot stack by reference.
+        /// </summary>
+        internal static XUiC_ItemStack TryGetLootSlotByStackReference(XUiC_LootWindowGroup lootWindowGroup, ItemStack stack)
+        {
+            if (lootWindowGroup == null || stack == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var controllers = TryGetLootItemStackControllersArray(lootWindowGroup);
+                if (controllers == null)
+                {
+                    return null;
+                }
+
+                for (var i = 0; i < controllers.Length; i++)
+                {
+                    var c = controllers.GetValue(i) as XUiC_ItemStack;
+                    var uiStack = TryGetItemStackFromLootSlotController(c);
+                    if (!ReferenceEquals(uiStack, null) && ReferenceEquals(uiStack, stack))
+                    {
+                        return c;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+
+        internal static ItemStack TryGetItemStackFromLootSlotController(XUiC_ItemStack controller)
+        {
+            if (controller == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                if (_xUiItemStackItemStackProperty == null)
+                {
+                    _xUiItemStackItemStackProperty = typeof(XUiC_ItemStack).GetProperty(
+                        "ItemStack",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                }
+
+                return _xUiItemStackItemStackProperty?.GetValue(controller, null) as ItemStack;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static System.Array TryGetLootItemStackControllersArray(XUiC_LootWindowGroup lootWindowGroup)
+        {
+            object lootWindow = GetMemberValue<object>(lootWindowGroup, "lootWindow");
+            if (lootWindow == null)
+            {
+                return null;
+            }
+
+            object lootContainer = GetMemberValue<object>(lootWindow, "lootContainer");
+            if (lootContainer == null)
+            {
+                return null;
+            }
+
+            // Prefer backing array (always populated for open loot); GetItemStackControllers() may depend on UI init order.
+            var controllers = GetMemberValue<object>(lootContainer, "itemControllers") as System.Array;
+            if (controllers == null)
+            {
+                controllers = InvokeMethod(lootContainer, "GetItemStackControllers") as System.Array;
+            }
+
+            return controllers;
+        }
+
+        /// <summary>
+        /// Bundle outputs land in toolbelt or backpack; vanilla magazine/recipe progression uses the same
+        /// <see cref="ItemActionEat.ExecuteInstantAction"/> path as loot when given the slot's <see cref="XUiC_ItemStack"/>.
+        /// Resolves that controller from <see cref="LocalPlayerUI.activeItemStackGrids"/> (toolbelt vs backpack grid).
+        /// </summary>
+        internal static XUiC_ItemStack TryGetPlayerItemSlotControllerForBundleRead(
+            EntityPlayer player,
+            int slotIndex,
+            ItemStack liveStack,
+            bool readFromBag)
+        {
+            if (player == null || slotIndex < 0 || liveStack == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                object lpUi = GetMemberValue<object>(player, "PlayerUI");
+                if (lpUi == null)
+                {
+                    lpUi = GetMemberValue<object>(player, "playerUI");
+                }
+
+                if (lpUi == null)
+                {
+                    return null;
+                }
+
+                var grids = GetMemberValue<System.Collections.IList>(lpUi, "activeItemStackGrids");
+                if (grids == null)
+                {
+                    return null;
+                }
+
+                var expectedGridName = readFromBag ? "XUiC_Backpack" : "XUiC_Toolbelt";
+
+                for (var gi = 0; gi < grids.Count; gi++)
+                {
+                    var grid = grids[gi];
+                    if (grid == null || grid.GetType().Name != expectedGridName)
+                    {
+                        continue;
+                    }
+
+                    var byRef = TryFindItemStackGridControllerByStackReference(grid, liveStack);
+                    if (byRef != null)
+                    {
+                        return byRef;
+                    }
+
+                    var byIdx = TryGetItemStackControllerFromGridAtSlot(grid, slotIndex);
+                    if (byIdx != null)
+                    {
+                        var uiStack = TryGetItemStackFromLootSlotController(byIdx);
+                        if (uiStack != null && ReferenceEquals(uiStack, liveStack))
+                        {
+                            return byIdx;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Non-UI host / stub
+            }
+
+            return null;
+        }
+
+        private static XUiC_ItemStack TryFindItemStackGridControllerByStackReference(object grid, ItemStack stack)
+        {
+            var controllers = TryGetItemStackControllersArrayFromGrid(grid);
+            if (controllers == null)
+            {
+                return null;
+            }
+
+            for (var i = 0; i < controllers.Length; i++)
+            {
+                var c = controllers.GetValue(i) as XUiC_ItemStack;
+                var uiStack = TryGetItemStackFromLootSlotController(c);
+                if (!ReferenceEquals(uiStack, null) && ReferenceEquals(uiStack, stack))
+                {
+                    return c;
+                }
+            }
+
+            return null;
+        }
+
+        private static System.Array TryGetItemStackControllersArrayFromGrid(object grid)
+        {
+            if (grid == null)
+            {
+                return null;
+            }
+
+            var controllers = GetMemberValue<object>(grid, "itemControllers") as System.Array;
+            if (controllers == null)
+            {
+                controllers = InvokeMethod(grid, "GetItemStackControllers") as System.Array;
+            }
+
+            return controllers;
+        }
+
+        private static XUiC_ItemStack TryGetItemStackControllerFromGridAtSlot(object grid, int slotIndex)
+        {
+            if (grid == null || slotIndex < 0)
+            {
+                return null;
+            }
+
+            if (grid.GetType().Name == "XUiC_Toolbelt")
+            {
+                var slot = InvokeMethod(grid, "GetSlotControl", slotIndex);
+                if (slot is XUiC_ItemStack xs)
+                {
+                    return xs;
+                }
+            }
+
+            var arr = TryGetItemStackControllersArrayFromGrid(grid);
+            if (arr != null && slotIndex < arr.Length)
+            {
+                return arr.GetValue(slotIndex) as XUiC_ItemStack;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -437,28 +681,9 @@ namespace AutoReadMod
 
         internal static ItemStack GetEmptyItemStack()
         {
-            var itemStackType = typeof(ItemStack);
-
-            var field = itemStackType.GetField("Empty", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (field != null)
-            {
-                var value = field.GetValue(null);
-                if (value is ItemStack fieldStack)
-                {
-                    return fieldStack;
-                }
-            }
-
-            var property = itemStackType.GetProperty("Empty", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (property != null)
-            {
-                var value = property.GetValue(null, null);
-                if (value is ItemStack propertyStack)
-                {
-                    return propertyStack;
-                }
-            }
-
+            // Do not reuse the game's static ItemStack.Empty sentinel in persisted containers.
+            // Some game paths mutate/serialize the instance they are handed; a shared sentinel can
+            // reappear later as a huge stack after save/load. A fresh empty stack is safer.
             return new ItemStack();
         }
 
@@ -489,6 +714,71 @@ namespace AutoReadMod
             return null;
         }
 
+        /// <summary>
+        /// Local player from <see cref="GameManager"/> (e.g. myEntityPlayerLocal). Item/perk logic often ties to this instance, not an arbitrary <see cref="EntityPlayer"/> from XUi.
+        /// </summary>
+        internal static EntityPlayer TryGetLocalEntityPlayer()
+        {
+            var gm = GetGameManagerInstance();
+            if (gm == null)
+            {
+                return null;
+            }
+
+            object raw = GetMemberValue<object>(gm, "myEntityPlayerLocal");
+            if (raw == null)
+            {
+                raw = GetMemberValue<object>(gm, "MyEntityPlayerLocal");
+            }
+
+            return raw as EntityPlayer;
+        }
+
+        /// <summary>
+        /// <see cref="ItemActionEat.ExecuteInstantAction"/> calls <c>LocalPlayerUI.GetUIForPlayer(EntityPlayerLocal)</c>; passing only <see cref="EntityPlayer"/> can skip magazine/recipe UI paths.
+        /// Uses reflection so net472 stub builds without a concrete <c>EntityPlayerLocal</c> type.
+        /// </summary>
+        internal static EntityAlive ResolveEntityPlayerLocalForInstantActions(EntityAlive entity)
+        {
+            if (entity == null)
+            {
+                return null;
+            }
+
+            var eplType = typeof(EntityPlayer).Assembly.GetType("EntityPlayerLocal");
+            if (eplType != null && eplType.IsInstanceOfType(entity))
+            {
+                return entity;
+            }
+
+            var local = TryGetLocalEntityPlayer();
+            if (local != null && eplType != null && eplType.IsInstanceOfType(local))
+            {
+                return local;
+            }
+
+            return entity;
+        }
+
+        /// <summary>
+        /// Prefer <see cref="TryGetLocalEntityPlayer"/> for holding entity / min-events; fall back to the player from the current patch context.
+        /// </summary>
+        internal static EntityAlive ResolveEntityForItemEffects(EntityPlayer contextPlayer)
+        {
+            if (contextPlayer == null)
+            {
+                return null;
+            }
+
+            var local = TryGetLocalEntityPlayer();
+            if (local != null)
+            {
+                return local;
+            }
+
+            return contextPlayer;
+        }
+
         internal static ItemInventoryData CreateItemInventoryData(ItemClass itemClass, ItemStack itemStack, object gameManager, EntityAlive entity, int slotIdx, ItemValue itemValue)
         {
             var invData = TryInvokeCreateItemInventoryData(itemClass, itemStack, gameManager, entity, slotIdx)
@@ -504,7 +794,62 @@ namespace AutoReadMod
             SetMemberValue(invData, "holdingEntity", entity);
             SetMemberValue(invData, "slotIdx", slotIdx);
             SetMemberValue(invData, "gameManager", gameManager);
+            TryPopulateItemInventoryDataWorldAndItemValue(invData, gameManager, entity, itemValue);
             return invData;
+        }
+
+        /// <summary>
+        /// Vanilla consume/recipe unlock often consults <see cref="ItemInventoryData.world"/> and item value context.
+        /// Factory-created data may already set these; reflection fallback often leaves them null.
+        /// </summary>
+        private static void TryPopulateItemInventoryDataWorldAndItemValue(
+            ItemInventoryData invData,
+            object gameManager,
+            EntityAlive entity,
+            ItemValue itemValue)
+        {
+            if (invData == null)
+            {
+                return;
+            }
+
+            try
+            {
+                object world = null;
+                if (gameManager != null)
+                {
+                    var gmType = gameManager.GetType();
+                    var worldProp = gmType.GetProperty("World", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (worldProp != null && worldProp.GetIndexParameters().Length == 0)
+                    {
+                        world = worldProp.GetValue(gameManager, null);
+                    }
+
+                    if (world == null)
+                    {
+                        world = GetMemberValue<object>(gameManager, "m_World");
+                    }
+                }
+
+                if (world == null && entity != null)
+                {
+                    world = GetMemberValue<object>(entity, "world");
+                }
+
+                if (world != null)
+                {
+                    SetMemberValue(invData, "world", world);
+                }
+
+                if (itemValue != null)
+                {
+                    SetMemberValue(invData, "itemValue", itemValue);
+                }
+            }
+            catch
+            {
+                // Best-effort only
+            }
         }
 
         private static ItemInventoryData TryInvokeCreateItemInventoryData(ItemClass itemClass, ItemStack itemStack, object gameManager, EntityAlive entity, int slotIdx)
@@ -616,6 +961,55 @@ namespace AutoReadMod
             }
         }
 
+        /// <summary>Multicast: tests may += Console; AutoReader static ctor += Debug.Log when DebugMode.</summary>
+        public static System.Action<string> DiagnosticLine;
+
+        /// <summary>For AutoReader hypothesis logs (same sink as reflection diagnostics).</summary>
+        internal static void EmitHypothesisLine(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+
+            try
+            {
+                DiagnosticLine?.Invoke(message);
+            }
+            catch
+            {
+                // Never break read path
+            }
+        }
+
+        private static void EmitDiagnostic(string message)
+        {
+            EmitHypothesisLine(message);
+        }
+
+        private static string FormatArgTypes(object[] args)
+        {
+            if (args == null || args.Length == 0)
+            {
+                return "(none)";
+            }
+
+            var parts = new string[args.Length];
+            for (var i = 0; i < args.Length; i++)
+            {
+                if (args[i] == null)
+                {
+                    parts[i] = "null";
+                }
+                else
+                {
+                    parts[i] = args[i].GetType().Name;
+                }
+            }
+
+            return string.Join(", ", parts);
+        }
+
         internal static MinEventParams CreateMinEventParams(EntityAlive self, ItemValue itemValue, ItemInventoryData itemInventoryData)
         {
             var eventParams = System.Activator.CreateInstance(typeof(MinEventParams)) as MinEventParams;
@@ -627,9 +1021,17 @@ namespace AutoReadMod
             SetMemberValue(eventParams, "Self", self);
             SetMemberValue(eventParams, "ItemValue", itemValue);
             SetMemberValue(eventParams, "ItemInventoryData", itemInventoryData);
+            // Client-only progression from items.xml (e.g. AddProgressionLevel on onSelfPrimaryActionEnd) often skips when false.
+            SetMemberValue(eventParams, "IsLocal", true);
+            SetMemberValue(eventParams, "isLocal", true);
             return eventParams;
         }
 
+        /// <summary>
+        /// Resolves and invokes an instance method. Walks the inheritance chain with DeclaredOnly so methods declared on
+        /// base types (e.g. <c>ItemAction.CreateModifierData</c> on a concrete <c>ItemActionEat</c>) are found. The previous
+        /// implementation only used <c>GetMethods()</c> on the run-time type and could miss those methods depending on the runtime.
+        /// </summary>
         internal static object InvokeMethod(object instance, string methodName, params object[] args)
         {
             if (instance == null || string.IsNullOrEmpty(methodName))
@@ -637,43 +1039,164 @@ namespace AutoReadMod
                 return null;
             }
 
-            var instanceType = instance.GetType();
-            var methods = instanceType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            foreach (var method in methods)
+            var method = FindInstanceMethod(instance, methodName, args);
+            return method?.Invoke(instance, args);
+        }
+
+        /// <summary>True if a matching method was found and invoked. Use this when a void return cannot distinguish "missing" from "ran".</summary>
+        internal static bool TryInvokeInstanceMethod(object instance, string methodName, out object returnValue, params object[] args)
+        {
+            returnValue = null;
+            if (instance == null || string.IsNullOrEmpty(methodName))
             {
-                if (method.Name != methodName)
+                return false;
+            }
+
+            var method = FindInstanceMethod(instance, methodName, args);
+            if (method == null)
+            {
+                if (ShouldDeepDiagnoseMethod(methodName))
                 {
-                    continue;
+                    EmitDiagnostic(
+                        $"TryInvokeInstanceMethod MISS: {instance.GetType().Name}::{methodName} args=[{FormatArgTypes(args)}]");
                 }
 
-                var parameters = method.GetParameters();
-                if (parameters.Length != args.Length)
-                {
-                    continue;
-                }
+                return false;
+            }
 
-                bool allAssignable = true;
-                for (int i = 0; i < parameters.Length; i++)
+            returnValue = method.Invoke(instance, args);
+            return true;
+        }
+
+        private static bool ShouldDeepDiagnoseMethod(string methodName)
+        {
+            return methodName == "CreateModifierData" || methodName == "consume" || methodName == "ExecuteInstantAction" ||
+                   methodName == "Completed" || methodName == "ExecuteAction";
+        }
+
+        private static System.Reflection.MethodInfo FindInstanceMethod(object instance, string methodName, object[] args)
+        {
+            if (args == null)
+            {
+                return null;
+            }
+
+            var diagnose = ShouldDeepDiagnoseMethod(methodName);
+            var rejectLog = new System.Text.StringBuilder();
+            for (var t = instance.GetType(); t != null; t = t.BaseType)
+            {
+                var methods = t.GetMethods(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                for (var mi = 0; mi < methods.Length; mi++)
                 {
-                    if (!IsAssignable(parameters[i].ParameterType, args[i]))
+                    var method = methods[mi];
+                    if (method.Name != methodName)
                     {
-                        allAssignable = false;
-                        break;
+                        continue;
+                    }
+
+                    var parameters = method.GetParameters();
+                    if (parameters.Length != args.Length)
+                    {
+                        if (diagnose && rejectLog.Length < 2000)
+                        {
+                            var sig = string.Join(", ", GetParameterTypeNames(parameters));
+                            rejectLog.AppendLine($"  nameMatch arityMismatch: {t.Name}.{method.Name}({sig}) need arity {args.Length}");
+                        }
+
+                        continue;
+                    }
+
+                    var allAssignable = true;
+                    for (var i = 0; i < parameters.Length; i++)
+                    {
+                        if (!IsParameterCompatible(parameters[i].ParameterType, args[i]))
+                        {
+                            if (diagnose && rejectLog.Length < 2000)
+                            {
+                                rejectLog.AppendLine(
+                                    $"  param mismatch: {t.Name}.{method.Name} param[{i}] want {parameters[i].ParameterType.Name} have {(args[i] == null ? "null" : args[i].GetType().Name)}");
+                            }
+
+                            allAssignable = false;
+                        }
+                    }
+
+                    if (allAssignable)
+                    {
+                        if (diagnose)
+                        {
+                            var okSig = string.Join(", ", GetParameterTypeNames(parameters));
+                            EmitDiagnostic($"FindInstanceMethod OK: {method.DeclaringType?.Name}::{method.Name}({okSig})");
+                        }
+
+                        return method;
                     }
                 }
+            }
 
-                if (!allAssignable)
-                {
-                    continue;
-                }
-
-                return method.Invoke(instance, args);
+            if (diagnose)
+            {
+                EmitDiagnostic(
+                    $"FindInstanceMethod FAIL: {instance.GetType().Name}::{methodName} argTypes=[{FormatArgTypes(args)}] searched inheritance from {instance.GetType().Name}. \n" +
+                    (rejectLog.Length > 0 ? "Candidates / rejects:\n" + rejectLog : "No same-name method found with matching arity."));
             }
 
             return null;
         }
 
-        private static T GetMemberValue<T>(object instance, string memberName)
+        private static string[] GetParameterTypeNames(System.Reflection.ParameterInfo[] parameters)
+        {
+            var a = new string[parameters.Length];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                a[i] = parameters[i].ParameterType.Name;
+            }
+
+            return a;
+        }
+
+        /// <summary>Like <see cref="IsAssignable"/> but coerces e.g. boxed <see cref="int"/> to the parameter type.</summary>
+        private static bool IsParameterCompatible(System.Type parameterType, object value)
+        {
+            if (parameterType == null)
+            {
+                return false;
+            }
+
+            if (value == null)
+            {
+                return !parameterType.IsValueType || System.Nullable.GetUnderlyingType(parameterType) != null;
+            }
+
+            if (parameterType.IsInstanceOfType(value))
+            {
+                return true;
+            }
+
+            var valueType = value.GetType();
+            if (parameterType.IsEnum && valueType == typeof(int))
+            {
+                return true;
+            }
+
+            if (parameterType.IsPrimitive && valueType.IsPrimitive)
+            {
+                try
+                {
+                    System.Convert.ChangeType(value, parameterType, System.Globalization.CultureInfo.InvariantCulture);
+                    return true;
+                }
+                catch
+                {
+                    // Fall through
+                }
+            }
+
+            return IsAssignable(parameterType, value);
+        }
+
+        internal static T GetMemberValue<T>(object instance, string memberName)
         {
             if (instance == null || string.IsNullOrEmpty(memberName))
             {

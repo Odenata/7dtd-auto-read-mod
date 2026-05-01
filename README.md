@@ -47,7 +47,7 @@ To uninstall, delete `Mods\AutoReadMod`.
 
 - If the mod does not load, confirm the folder layout above and that EAC is disabled.
 - If items are not auto-read, check `Enabled` and the relevant `ItemTypes` entries in `Config.xml`.
-- If you need more detail, set `DebugMode` to `true`, reproduce the issue, then inspect the game log for `AutoReadMod` messages.
+- If you need more detail, set `DebugMode` to `true`, reproduce the issue, then inspect the client log for `AutoReadMod` / `[HYP]` lines. For normal manual launches (e.g. Steam), the newest file is usually `%AppData%\Roaming\7DaysToDie\logs\output_log_client__*.txt`. Some scripted or integration launches persist logs under `%AppData%\LocalLow\The Fun Pimps\7 Days To Die\Player.log` instead.
 
 ## Maintainers
 

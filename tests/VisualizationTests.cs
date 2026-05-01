@@ -50,6 +50,45 @@ namespace AutoReadMod.Tests
         }
 
         [Fact]
+        public void ProcessContainer_WhenOneActionConsumesWholeStack_EnqueuesConsumedUnitCount()
+        {
+            DrainQueue();
+            var originalConfig = ModConfig.Instance;
+            var originalGameManager = GameManager.Instance;
+
+            try
+            {
+                SetConfig(new ModConfig
+                {
+                    Enabled = true,
+                    ReadBooks = true,
+                    ReadMagazines = true,
+                    ReadSchematics = true,
+                });
+                GameManager.Instance = new GameManager();
+
+                var container = new TileEntityLootContainer(null)
+                {
+                    items = new ItemStack[] { CreateStack("magazineGuns", 2, new ItemActionEat { ConsumeEntireStack = true }) },
+                };
+                var player = CreatePlayer();
+
+                AutoReader.ProcessContainer(player, container);
+
+                var events = AutoReadVisualizationQueue.DequeueAllForTest();
+                Assert.Single(events);
+                Assert.Equal(AutoReadVisualizationSource.Container, events[0].Source);
+                Assert.Equal(2, events[0].Count);
+            }
+            finally
+            {
+                GameManager.Instance = originalGameManager;
+                ModConfig.Reload();
+                DrainQueue();
+            }
+        }
+
+        [Fact]
         public void ProcessOpenedBundle_EnqueuesDecorateOnlyBundleVisualization()
         {
             DrainQueue();
@@ -70,7 +109,7 @@ namespace AutoReadMod.Tests
                     ReadMagazines = true,
                     ReadSchematics = true,
                 });
-                BundleOpenPatchShared.ProcessOpenedBundle(player, true, snapshot);
+                BundleOpenPatchShared.ApplyOpenedBundleEffectsImmediately(player, snapshot);
                 var events = AutoReadVisualizationQueue.DequeueAllForTest();
                 var decorateEvt = events.Find(e =>
                     e.Source == AutoReadVisualizationSource.Bundle
@@ -139,13 +178,18 @@ namespace AutoReadMod.Tests
 
         private static ItemStack CreateStack(string itemName, int count)
         {
+            return CreateStack(itemName, count, new ItemActionEat());
+        }
+
+        private static ItemStack CreateStack(string itemName, int count, params ItemActionBase[] actions)
+        {
             return new ItemStack(
                 new ItemValue(itemName.GetHashCode())
                 {
                     ItemClass = new ItemClass
                     {
                         Name = itemName,
-                        Actions = new ItemActionBase[] { new ItemActionEat() },
+                        Actions = actions,
                     },
                 },
                 count);

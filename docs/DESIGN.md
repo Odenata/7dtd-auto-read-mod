@@ -20,7 +20,7 @@ The mod identifies readable items (books, magazines, schematics, recipes), appli
   - recipes: names ending with `recipe`
   - bundle items themselves are excluded from readable-item detection
   - schematic and recipe are checked before magazine so names like `gunMagazineSchematic` classify as schematic, not magazine
-- **Consumption**: For each readable stack, find `ItemActionEat`, then per unit call `ExecuteInstantAction(player, stack, isHeldItem: false, null)` on the **real** slot `ItemStack` (vanilla decrements `stack.count`). Vanilla does not fire `onSelfPrimaryActionEnd` when `stackController` is null; the mod fires it after each successful instant action so book/perk XML matches UI reads. `successfulConsumes` increments only when `ExecuteInstantAction` returns true.
+- **Consumption**: For each readable stack, find `ItemActionEat`. Prefer the vanilla read path: build `ItemInventoryData` and `ItemActionData` (via `CreateModifierData` or ctor), then call `consume(actionData)` once per unit — that path applies schematics, perks, and recipe unlocks. **Fallback** (e.g. odd builds): per unit call `ExecuteInstantAction(player, stack, isHeldItem: false, null)`; vanilla does not fire `onSelfPrimaryActionEnd` when `stackController` is null, so the mod fires it after each successful instant action. `successfulConsumes` increments when the stack count drops or `ExecuteInstantAction` returns true (legacy only).
 - **Bundle open**: If `ExecuteInstantAction` returns false (e.g. loot bundle failure), auto-read of new bundle outputs is skipped.
 - **Empty loot on open**: Wait up to ~180 frames for slots to populate, then auto-read once when items appear (covers timer-delayed `OpenContainer`).
 - **Removal**:
@@ -43,5 +43,5 @@ See `src/Config.xml` and `ModConfig.cs`:
 
 - **Hermetic Bazel unit/tool tests**: Mock-based tests run through native Bazel `net_xunit_test` targets with pinned external dependencies from `MODULE.bazel`.
 - **IDE/MSBuild compatibility**: The `.csproj` files remain available for editor support and optional local `dotnet test`, but they are no longer the source of truth for the hermetic test graph.
-- **Bundle/unit coverage**: Unit tests exercise bundle-output classification, `wasSuccessful` gating, deferred loot timing, `ItemActionEat.ExecuteInstantAction` contract, success counting, added-inventory detection, stacked bundle results, and config gating.
+- **Bundle/unit coverage**: Unit tests exercise bundle-output classification, `wasSuccessful` gating, deferred loot timing, `ItemActionEat.consume` / `ExecuteInstantAction` contracts, success counting, added-inventory detection, stacked bundle results, and config gating.
 - **Integration smoke test**: Deploy to local game install, verify the mod loads successfully and the Harmony patches apply cleanly.

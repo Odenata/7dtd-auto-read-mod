@@ -27,6 +27,27 @@ namespace AutoReadMod
                 {
                     SafeLog("Per-frame update target not found (deferred container + visualization may not run)");
                 }
+
+                try
+                {
+                    var gmUpdate = typeof(GameManager).GetMethod(
+                        "Update",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                        null,
+                        System.Type.EmptyTypes,
+                        null);
+                    if (gmUpdate != null)
+                    {
+                        harmony.Patch(
+                            gmUpdate,
+                            postfix: new HarmonyMethod(typeof(GameManagerDeferredTickHook), nameof(GameManagerDeferredTickHook.GameManagerUpdatePostfix)));
+                        SafeLog("GameManager.Update deferred-tick backup patch applied");
+                    }
+                }
+                catch (Exception gmEx)
+                {
+                    SafeLog($"GameManager.Update backup patch skipped: {gmEx.Message}");
+                }
                 SafeLog("Harmony patches applied");
             }
             catch (Exception ex)

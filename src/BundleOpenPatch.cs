@@ -13,7 +13,7 @@ namespace AutoReadMod
 
         static void Postfix(EntityAlive ent, bool __result, InventorySnapshot __state)
         {
-            BundleOpenPatchShared.ProcessOpenedBundle(ent, __result, __state, "ItemActionOpenBundle");
+            BundleOpenPatchShared.ProcessOpenedBundle(ent, __state, "ItemActionOpenBundle");
         }
     }
 
@@ -27,7 +27,7 @@ namespace AutoReadMod
 
         static void Postfix(EntityAlive ent, bool __result, InventorySnapshot __state)
         {
-            BundleOpenPatchShared.ProcessOpenedBundle(ent, __result, __state, "ItemActionOpenLootBundle");
+            BundleOpenPatchShared.ProcessOpenedBundle(ent, __state, "ItemActionOpenLootBundle");
         }
     }
 
@@ -53,14 +53,12 @@ namespace AutoReadMod
                 InventorySlotSnapshotCollection.Capture(GameReflection.GetBagSlots(bag)));
         }
 
-        internal static void ProcessOpenedBundle(EntityAlive entity, bool wasSuccessful, InventorySnapshot beforeSnapshot, string bundlePatchSource = null)
+        /// <summary>Harmony postfix — runs right after bundle contents land in inventory/bag.</summary>
+        internal static void ProcessOpenedBundle(EntityAlive entity, InventorySnapshot beforeSnapshot, string bundlePatchSource = null)
         {
+            // Do not gate on ExecuteInstantAction's bool return: some builds report false even when
+            // bundle loot was applied; diff-based detection is harmless when nothing was added.
             if (beforeSnapshot == null)
-            {
-                return;
-            }
-
-            if (!wasSuccessful)
             {
                 return;
             }
@@ -73,19 +71,53 @@ namespace AutoReadMod
                 return;
             }
 
-            var addedInventoryReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Inventory, inventory?.GetSlots());
-            var addedBagReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Bag, GameReflection.GetBagSlots(bag));
-            if (addedInventoryReadableCounts.Count == 0 && addedBagReadableCounts.Count == 0)
-                return;
+            ApplyOpenedBundleEffectsImmediately(player, beforeSnapshot);
+        }
 
-            if (addedInventoryReadableCounts.Count > 0)
+        /// <summary>Runs bundle diff + auto-read (shared by <see cref="ProcessOpenedBundle"/> and tests).</summary>
+        internal static void ApplyOpenedBundleEffectsImmediately(EntityPlayer player, InventorySnapshot beforeSnapshot)
+        {
+            if (beforeSnapshot == null || player == null)
             {
-                AutoReader.ProcessInventorySlots(player, inventory, addedInventoryReadableCounts);
+                return;
             }
 
-            if (addedBagReadableCounts.Count > 0)
+            try
             {
-                AutoReader.ProcessBagSlots(player, bag, addedBagReadableCounts);
+                var inventory = GameReflection.GetInventory(player);
+                var bag = GameReflection.GetBag(player);
+                if (inventory == null && bag == null)
+                {
+                    return;
+                }
+
+                var addedInventoryReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Inventory, inventory?.GetSlots());
+                var addedBagReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Bag, GameReflection.GetBagSlots(bag));
+                if (addedInventoryReadableCounts.Count == 0 && addedBagReadableCounts.Count == 0)
+                {
+                    return;
+                }
+
+                if (addedInventoryReadableCounts.Count > 0)
+                {
+                    AutoReader.ProcessInventorySlots(player, inventory, addedInventoryReadableCounts);
+                }
+
+                if (addedBagReadableCounts.Count > 0)
+                {
+                    AutoReader.ProcessBagSlots(player, bag, addedBagReadableCounts);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                try
+                {
+                    UnityEngine.Debug.LogWarning("[AutoReadMod] Bundle auto-read failed (inventory unchanged): " + ex.Message + "\n" + ex.StackTrace);
+                }
+                catch
+                {
+                    // ignore
+                }
             }
         }
 

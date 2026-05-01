@@ -24,6 +24,8 @@ namespace AutoReadMod
 
         private static float _lastCollectedListNullLogTime = -999f;
         private const float CollectedListNullLogIntervalSeconds = 10f;
+        private static float _lastVisualizationExceptionLogTime = -999f;
+        private const float VisualizationExceptionLogIntervalSeconds = 10f;
         /// <summary>Rows already matched this frame when styling vanilla bundle notifications (same class, multiple stacks).</summary>
         private static readonly HashSet<int> DecorateVanillaUsedIndices = new HashSet<int>();
 
@@ -36,12 +38,35 @@ namespace AutoReadMod
 
         public static void OnUpdate(object xui)
         {
-            ContainerOpenPatchShared.ProcessDeferredContainer();
+            // DeferredContainerTick runs in XUiUpdatePatch.Postfix before this method — do not tick again here (avoids double entry per frame).
             if (xui == null || !ModConfig.Instance.VisualizationEnabled)
             {
                 return;
             }
 
+            try
+            {
+                OnUpdateVisualizationCore(xui);
+            }
+            catch (Exception ex)
+            {
+                if (Time.time - _lastVisualizationExceptionLogTime >= VisualizationExceptionLogIntervalSeconds)
+                {
+                    _lastVisualizationExceptionLogTime = Time.time;
+                    try
+                    {
+                        UnityEngine.Debug.LogWarning("[AutoReadMod] Visualization OnUpdate (suppressed repeat): " + ex.Message);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+            }
+        }
+
+        private static void OnUpdateVisualizationCore(object xui)
+        {
             var collectedList = GameReflection.GetCollectedItemList(xui);
             if (collectedList == null)
             {
@@ -314,9 +339,18 @@ namespace AutoReadMod
             }
             if (n > 0)
             {
-                int count = System.Math.Min(n, items.Count);
-                for (int i = 0; i < count; i++)
-                    ApplyColorToEntryAt(collectedItemList, items, i, PendingBundleColors[PendingBundleColors.Count - 1 - i].Color);
+                int maxRows = System.Math.Min(n, items.Count);
+                maxRows = System.Math.Min(maxRows, PendingBundleColors.Count);
+                for (int i = 0; i < maxRows; i++)
+                {
+                    int colorIdx = PendingBundleColors.Count - 1 - i;
+                    if (colorIdx < 0 || colorIdx >= PendingBundleColors.Count)
+                    {
+                        break;
+                    }
+
+                    ApplyColorToEntryAt(collectedItemList, items, i, PendingBundleColors[colorIdx].Color);
+                }
             }
         }
 
@@ -864,7 +898,7 @@ namespace AutoReadMod
         public static void Postfix(object __instance)
         {
             object xui = __instance is XUi xu ? xu : GameReflection.GetLocalPlayerXUi();
-            ContainerOpenPatchShared.ProcessDeferredContainer();
+            DeferredContainerTick.TickIfNewUnityFrame();
             AutoReadVisualizationOverlay.OnUpdate(xui);
         }
     }

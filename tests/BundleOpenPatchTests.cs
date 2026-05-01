@@ -103,7 +103,7 @@ namespace AutoReadMod.Tests
 
                 inventory.SetItem(0, CreateStack("bookFiremansAlmanacHeat", 5));
 
-                BundleOpenPatchShared.ProcessOpenedBundle(player, true, snapshot);
+                BundleOpenPatchShared.ApplyOpenedBundleEffectsImmediately(player, snapshot);
 
                 Assert.Equal(3, inventory.GetItemStack(0).count);
             }
@@ -138,7 +138,7 @@ namespace AutoReadMod.Tests
                 inventory.SetItem(0, ItemStack.Empty);
                 inventory.SetItem(1, CreateStack("magazineGuns", 2));
 
-                BundleOpenPatchShared.ProcessOpenedBundle(player, true, snapshot);
+                BundleOpenPatchShared.ApplyOpenedBundleEffectsImmediately(player, snapshot);
 
                 Assert.Equal(2, inventory.GetItemStack(1).count);
             }
@@ -174,10 +174,46 @@ namespace AutoReadMod.Tests
                 bag.SetSlot(0, ItemStack.Empty, true);
                 bag.SetSlot(1, CreateStack("magazineGuns", 2), true);
 
-                BundleOpenPatchShared.ProcessOpenedBundle(player, true, snapshot);
+                BundleOpenPatchShared.ApplyOpenedBundleEffectsImmediately(player, snapshot);
 
                 Assert.Equal(0, GameReflection.GetItemCount(GameReflection.GetBagItemStack(bag, 0)));
                 Assert.Equal(0, GameReflection.GetItemCount(GameReflection.GetBagItemStack(bag, 1)));
+            }
+            finally
+            {
+                GameManager.Instance = originalGameManager;
+                ModConfig.Reload();
+            }
+        }
+
+        [Fact]
+        public void ProcessOpenedBundle_ReadsReadableOutputsFromToolbeltInventory()
+        {
+            var originalConfig = ModConfig.Instance;
+            var originalGameManager = GameManager.Instance;
+
+            try
+            {
+                SetConfig(new ModConfig
+                {
+                    Enabled = true,
+                    ReadBooks = true,
+                    ReadMagazines = true,
+                    ReadSchematics = true,
+                });
+                GameManager.Instance = new GameManager();
+
+                var inventory = CreateInventory(CreateStack("magazineBundle", 1), ItemStack.Empty);
+                var player = CreatePlayer(inventory);
+                var snapshot = BundleOpenPatchShared.CaptureInventorySnapshot(player);
+
+                inventory.SetItem(0, ItemStack.Empty);
+                inventory.SetItem(1, CreateStack("magazineGuns", 2));
+
+                BundleOpenPatchShared.ApplyOpenedBundleEffectsImmediately(player, snapshot);
+
+                Assert.Equal(0, GameReflection.GetItemCount(inventory.GetItemStack(0)));
+                Assert.Equal(0, GameReflection.GetItemCount(inventory.GetItemStack(1)));
             }
             finally
             {

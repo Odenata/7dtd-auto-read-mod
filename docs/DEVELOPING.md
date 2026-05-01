@@ -102,6 +102,16 @@ AutoReadMod loaded successfully
 
 This is local host-tool or live-game evidence, not hermetic CI proof.
 
+## Manual playtesting logs
+
+When you start the game yourself (typical Steam launch), client logs are usually rotating files here:
+
+```text
+%AppData%\Roaming\7DaysToDie\logs\output_log_client__*.txt
+```
+
+Automated or scripted runs may instead write `%AppData%\LocalLow\The Fun Pimps\7 Days To Die\Player.log`. Search for `AutoReadMod` or `[HYP]` when debugging read paths.
+
 ## Related docs
 
 - [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md): project goals and build requirements.
