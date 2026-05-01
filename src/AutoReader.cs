@@ -314,10 +314,13 @@ namespace AutoReadMod
                 return 0;
             }
 
+            // Match the concrete vanilla eat action only. Derived types (other ItemActionEat subclasses)
+            // can appear earlier in Actions[] and may decrement/consume without the same unlock/min-event
+            // behavior as ItemActionEat; using 'is ItemActionEat' incorrectly preferred those in production.
             object eatAction = null;
             foreach (var action in itemActions)
             {
-                if (action is ItemActionEat)
+                if (action != null && action.GetType().Name == "ItemActionEat")
                 {
                     eatAction = action;
                     break;

@@ -7,7 +7,6 @@ UNIT_TESTS = [
     ":item_identification",
     ":configuration_filtering",
     ":debug_logging",
-    ":visualization",
 ]
 
 TOOL_TESTS = [
@@ -86,17 +85,6 @@ net_xunit_test(
     size = "small",
     srcs = ["DebugLoggingTests.cs"],
     deps = MOD_TEST_DEPS,
-    dotnet_context_data = "@rules_dotnet_framework//:net_context_data_net472",
-    testlauncher = "@xunit_runner_console//:net",
-)
-
-net_xunit_test(
-    name = "visualization",
-    size = "small",
-    srcs = ["VisualizationTests.cs"],
-    deps = MOD_TEST_DEPS + [
-        "@rules_dotnet_framework//dotnet/stdlib.net/net472:system.runtime.extensions.dll",
-    ],
     dotnet_context_data = "@rules_dotnet_framework//:net_context_data_net472",
     testlauncher = "@xunit_runner_console//:net",
 )

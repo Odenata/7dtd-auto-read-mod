@@ -62,6 +62,8 @@ IDE/editor compatibility path:
 dotnet test .\tests\AutoReadMod.Tests.csproj -c Release
 ```
 
+`VisualizationTests` (container/bundle notification queue) are only run through `dotnet test` above. Hermetic Bazel `//tests:unit` omits them because the net472 xUnit console runner does not mirror the same mock/type identity as `dotnet test` for the reflection-heavy consume path.
+
 The Bazel tests intentionally use explicit pinned repositories in `MODULE.bazel` instead of extension-generated `use_repo(...)` imports, so `bazel mod tidy` does not strip required xUnit dependencies.
 
 ## Deploy to a local game install
