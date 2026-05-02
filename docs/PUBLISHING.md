@@ -46,6 +46,7 @@ Release zip names use **mod version only** (for example `dist\AutoReadMod-0.1.0.
      AutoReadMod.dll
      Config.xml
      ModInfo.xml
+     icon.png
    ```
 
 8. Create `dist\AutoReadMod-<version>.zip` with one top-level `AutoReadMod\` folder.

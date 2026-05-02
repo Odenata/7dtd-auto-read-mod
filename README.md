@@ -16,6 +16,7 @@ Release zip names use the **mod version**. See [`docs/COMPATIBILITY.md`](docs/CO
   AutoReadMod.dll
   Config.xml
   ModInfo.xml
+  icon.png
 ```
 
 If the `Mods` folder does not exist, create it next to `7DaysToDie.exe`.
@@ -42,6 +43,10 @@ This mod is primarily client-side. If a server owner wants consistent behavior, 
 To update, replace the old `Mods\AutoReadMod` folder with the new release contents. Preserve your old `Config.xml` only after checking whether the new release changed configuration keys.
 
 To uninstall, delete `Mods\AutoReadMod`.
+
+## Known issues
+
+See [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 
 ## Troubleshooting
 

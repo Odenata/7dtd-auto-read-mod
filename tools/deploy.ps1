@@ -15,5 +15,17 @@ if (-not [string]::IsNullOrWhiteSpace($GameInstallDir)) {
   $params["GameInstallDir"] = $GameInstallDir
 }
 & $devTools @params
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) {
+  exit $LASTEXITCODE
+}
+
+$repoRoot = Join-Path $PSScriptRoot ".."
+$iconSrc = Join-Path $repoRoot "icon.png"
+if (Test-Path $iconSrc) {
+  $modsAutoRead = Join-Path $GameInstallDir "Mods\AutoReadMod"
+  Copy-Item $iconSrc -Destination $modsAutoRead -Force -ErrorAction Stop
+  Write-Host "Copied icon.png to $modsAutoRead" -ForegroundColor Green
+}
+
+exit 0
 
