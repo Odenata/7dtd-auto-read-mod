@@ -736,6 +736,21 @@ namespace AutoReadMod
                             $"ApplyReadableEffects: item {i + 1}: ItemActionLearnRecipe.ExecuteAction invoked ok={recipeOk} for {itemName}");
                     }
 
+                    if (readingFromOpenLoot && consumedThisUnit > 0)
+                    {
+                        var readableKind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
+                        if (readableKind == ReadableItemKind.Schematic || readableKind == ReadableItemKind.Recipe)
+                        {
+                            TryUnlockLootSchematicRecipesViaCraftingManager(
+                                player,
+                                gameManager,
+                                itemClass,
+                                itemActions,
+                                itemName,
+                                i + 1);
+                        }
+                    }
+
                     if (consumedThisUnit > 0)
                     {
                         successfulConsumes += consumedThisUnit;
@@ -1224,6 +1239,179 @@ namespace AutoReadMod
                 LogHypothesis(
                     $"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: exception → {root.GetType().Name}: {root.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// When <see cref="ItemActionLearnRecipe.ExecuteAction"/> does not unlock (e.g. <c>slotIdx=-1</c> loot reads),
+        /// mirror vanilla by calling <see cref="CraftingManager.UnlockRecipe(string, EntityPlayer)"/> for known recipe names.
+        /// </summary>
+        private static void TryUnlockLootSchematicRecipesViaCraftingManager(
+            EntityPlayer player,
+            object gameManager,
+            ItemClass itemClass,
+            System.Array itemActions,
+            string itemName,
+            int unitIndex)
+        {
+            if (player == null)
+            {
+                LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: skipped (no player)");
+                return;
+            }
+
+            var craftingManager = TryGetCraftingManager(gameManager);
+            if (craftingManager == null)
+            {
+                LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: CraftingManager not resolved");
+                return;
+            }
+
+            var recipeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (itemActions != null)
+            {
+                for (var ai = 0; ai < itemActions.Length; ai++)
+                {
+                    var action = itemActions.GetValue(ai);
+                    if (action == null || action.GetType().Name != "ItemActionLearnRecipe")
+                    {
+                        continue;
+                    }
+
+                    CollectRecipesToLearnFromLearnRecipeAction(action, recipeNames);
+                }
+            }
+
+            AddSchematicRecipeNameHeuristics(itemClass, recipeNames);
+
+            if (recipeNames.Count == 0)
+            {
+                LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: no candidate recipe names");
+                return;
+            }
+
+            foreach (var recipe in recipeNames)
+            {
+                if (string.IsNullOrWhiteSpace(recipe))
+                {
+                    continue;
+                }
+
+                if (GameReflection.TryInvokeInstanceMethod(craftingManager, "UnlockRecipe", out var _, recipe, player))
+                {
+                    LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: UnlockRecipe(\"{recipe}\") invoked");
+                }
+                else
+                {
+                    LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: UnlockRecipe(\"{recipe}\") not invoked (missing overload or void)");
+                }
+            }
+        }
+
+        private static object TryGetCraftingManager(object gameManager)
+        {
+            if (gameManager == null)
+            {
+                return null;
+            }
+
+            foreach (var key in new[] { "craftingManager", "CraftingManager", "mCraftingManager" })
+            {
+                var cm = GameReflection.GetMemberValue<object>(gameManager, key);
+                if (cm != null && cm.GetType().Name == "CraftingManager")
+                {
+                    return cm;
+                }
+            }
+
+            var world = GameReflection.GetMemberValue<object>(gameManager, "m_World")
+                ?? GameReflection.GetMemberValue<object>(gameManager, "World");
+            if (world == null)
+            {
+                return null;
+            }
+
+            foreach (var key in new[] { "craftingManager", "CraftingManager", "mCraftingManager" })
+            {
+                var cm = GameReflection.GetMemberValue<object>(world, key);
+                if (cm != null && cm.GetType().Name == "CraftingManager")
+                {
+                    return cm;
+                }
+            }
+
+            return null;
+        }
+
+        private static void CollectRecipesToLearnFromLearnRecipeAction(object learnRecipeAction, HashSet<string> recipeNames)
+        {
+            if (learnRecipeAction == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var arr = GameReflection.GetMemberValue<string[]>(learnRecipeAction, "RecipesToLearn");
+                if (arr != null)
+                {
+                    foreach (var entry in arr)
+                    {
+                        if (!string.IsNullOrWhiteSpace(entry))
+                        {
+                            recipeNames.Add(entry.Trim());
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static void AddSchematicRecipeNameHeuristics(ItemClass itemClass, HashSet<string> recipeNames)
+        {
+            if (itemClass == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var moldObj = GameReflection.GetMemberValue<object>(itemClass, "MoldTarget");
+                if (moldObj is ItemClass moldTarget)
+                {
+                    var moldName = GameReflection.GetItemClassName(moldTarget);
+                    if (!string.IsNullOrWhiteSpace(moldName))
+                    {
+                        recipeNames.Add(moldName.Trim());
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            var className = GameReflection.GetItemClassName(itemClass);
+            if (string.IsNullOrEmpty(className))
+            {
+                return;
+            }
+
+            const string schematicSuffix = "schematic";
+            if (className.EndsWith(schematicSuffix, StringComparison.OrdinalIgnoreCase) &&
+                className.Length > schematicSuffix.Length)
+            {
+                recipeNames.Add(className.Substring(0, className.Length - schematicSuffix.Length));
+            }
+
+            const string recipeSuffix = "recipe";
+            if (className.EndsWith(recipeSuffix, StringComparison.OrdinalIgnoreCase) &&
+                className.Length > recipeSuffix.Length)
+            {
+                recipeNames.Add(className.Substring(0, className.Length - recipeSuffix.Length));
             }
         }
 
