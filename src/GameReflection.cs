@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.Serialization;
 
@@ -146,19 +147,8 @@ namespace AutoReadMod
 
             try
             {
-                object lpUi = GetMemberValue<object>(player, "PlayerUI");
+                object lpUi = TryResolveLocalPlayerUIForBundle(player);
                 if (lpUi == null)
-                {
-                    lpUi = GetMemberValue<object>(player, "playerUI");
-                }
-
-                if (lpUi == null)
-                {
-                    return null;
-                }
-
-                var grids = GetMemberValue<System.Collections.IList>(lpUi, "activeItemStackGrids");
-                if (grids == null)
                 {
                     return null;
                 }
@@ -168,14 +158,10 @@ namespace AutoReadMod
                 // Backpack first: bundle-added items typically appear in non-toolbelt inventory slots.
                 foreach (var gridTypeName in new[] { "XUiC_Backpack", "XUiC_Toolbelt" })
                 {
-                    for (var gi = 0; gi < grids.Count; gi++)
+                    var candidates = new List<object>(4);
+                    AddCandidateGridsForBundle(lpUi, gridTypeName, candidates);
+                    foreach (var grid in candidates)
                     {
-                        var grid = grids[gi];
-                        if (grid == null || grid.GetType().Name != gridTypeName)
-                        {
-                            continue;
-                        }
-
                         var byRef = TryFindItemStackGridControllerByStackReference(grid, liveStack);
                         if (byRef != null)
                         {
@@ -200,6 +186,124 @@ namespace AutoReadMod
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Prefer GameManager local player UI — magazine readers resolve through LocalPlayerUI even when patch context uses another reference.
+        /// </summary>
+        private static object TryResolveLocalPlayerUIForBundle(EntityPlayer player)
+        {
+            EntityPlayer local = TryGetLocalEntityPlayer();
+            foreach (EntityPlayer ep in new EntityPlayer[] { local, player })
+            {
+                if (ep == null)
+                {
+                    continue;
+                }
+
+                object ui = GetMemberValue<object>(ep, "PlayerUI");
+                if (ui == null)
+                {
+                    ui = GetMemberValue<object>(ep, "playerUI");
+                }
+
+                if (ui != null)
+                {
+                    return ui;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// <see cref="LocalPlayerUI.activeItemStackGrids"/> often excludes backpack/toolbelt while loot/crafting windows are focused,
+        /// leaving no slot controllers and breaking magazine skill grants. When no matching grid is registered, resolve grids from <see cref="XUi"/>.
+        /// </summary>
+        private static void AddCandidateGridsForBundle(object lpUi, string gridTypeName, List<object> dst)
+        {
+            var active = GetMemberValue<System.Collections.IList>(lpUi, "activeItemStackGrids");
+            if (active != null)
+            {
+                for (var i = 0; i < active.Count; i++)
+                {
+                    var grid = active[i];
+                    if (grid != null && grid.GetType().Name == gridTypeName)
+                    {
+                        dst.Add(grid);
+                    }
+                }
+            }
+
+            if (dst.Count > 0)
+            {
+                return;
+            }
+
+            object xui = GetMemberValue<object>(lpUi, "xui");
+            if (xui == null)
+            {
+                xui = GetMemberValue<object>(lpUi, "mXUi");
+            }
+
+            if (xui == null)
+            {
+                return;
+            }
+
+            System.Type gridType = typeof(EntityPlayer).Assembly.GetType(gridTypeName);
+            if (gridType == null)
+            {
+                return;
+            }
+
+            TryAddXUiChildrenOfType(xui, gridType, dst);
+        }
+
+        private static void TryAddXUiChildrenOfType(object xui, System.Type componentType, List<object> dst)
+        {
+            try
+            {
+                foreach (var method in xui.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (method.Name != "GetChildrenByType" || !method.IsGenericMethodDefinition)
+                    {
+                        continue;
+                    }
+
+                    if (method.GetParameters().Length != 0)
+                    {
+                        continue;
+                    }
+
+                    object raw;
+                    try
+                    {
+                        raw = method.MakeGenericMethod(componentType).Invoke(xui, null);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (raw is System.Collections.IEnumerable enumerable)
+                    {
+                        foreach (object item in enumerable)
+                        {
+                            if (item != null)
+                            {
+                                dst.Add(item);
+                            }
+                        }
+
+                        return;
+                    }
+                }
+            }
+            catch
+            {
+                // Stub / older API
+            }
         }
 
         /// <summary>
