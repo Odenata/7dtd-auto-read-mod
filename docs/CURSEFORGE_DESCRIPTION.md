@@ -31,3 +31,9 @@ Unfortunately this mod is not crossplay compatible. At this time there is no way
 ## Compatibility
 
 See `docs/COMPATIBILITY.md` in the source repository for the current mod-version to game-version table.
+
+## Source and contributions
+
+Source, development notes, and issue tracking are available on GitHub:
+
+[https://github.com/Odenata/7dtd-auto-read-mod](https://github.com/Odenata/7dtd-auto-read-mod)
