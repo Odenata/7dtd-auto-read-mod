@@ -352,9 +352,10 @@ namespace AutoReadMod
                         : null;
                     if (lootSlotController != null && (probeUi == null || probeUi.IsEmpty()))
                     {
+                        // Keep the controller: vanilla magazine skills often need XUiC_ItemStack even when ItemStack
+                        // is not synced yet; ApplyReadableEffects passes backing stack when UI stack is missing.
                         LogHypothesis(
-                            "ReadStack: bundle XUiC_ItemStack has no ItemStack yet — using backing inventory eat path (TryConsume/FireEvent)");
-                        lootSlotController = null;
+                            "ReadStack: bundle XUiC_ItemStack.ItemStack empty/unset — keeping controller; using backing stack for instant/read path");
                     }
 
                     LogHypothesis(

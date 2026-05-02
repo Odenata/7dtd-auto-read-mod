@@ -130,6 +130,7 @@ namespace AutoReadMod
         /// Resolves that controller from <see cref="LocalPlayerUI.activeItemStackGrids"/>.
         /// Both <see cref="XUiC_Backpack"/> and <see cref="XUiC_Toolbelt"/> are searched: inventory bundle drops
         /// usually map to the backpack grid; searching only one grid leaves <c>stackController</c> null and breaks skill gains.
+        /// Slot controllers match by stack reference when possible, then by same item key + count when instances differ.
         /// </summary>
         /// <param name="readFromBag">Legacy hint (still accepted); both grids are always searched.</param>
         internal static XUiC_ItemStack TryGetPlayerItemSlotControllerForBundleRead(
@@ -185,7 +186,7 @@ namespace AutoReadMod
                         if (byIdx != null)
                         {
                             var uiStack = TryGetItemStackFromLootSlotController(byIdx);
-                            if (uiStack != null && ReferenceEquals(uiStack, liveStack))
+                            if (uiStack != null && BundleSlotStacksAlign(uiStack, liveStack))
                             {
                                 return byIdx;
                             }
@@ -201,6 +202,34 @@ namespace AutoReadMod
             return null;
         }
 
+        /// <summary>
+        /// Player inventory backing arrays and HUD grids often keep different <see cref="ItemStack"/> instances for the same slot.
+        /// Reference-only matching leaves <c>XUiC_ItemStack</c> unresolved and breaks vanilla magazine skill paths that expect the UI controller.
+        /// </summary>
+        private static bool BundleSlotStacksAlign(ItemStack uiStack, ItemStack backingStack)
+        {
+            if (backingStack == null || backingStack.IsEmpty() || uiStack == null || uiStack.IsEmpty())
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(uiStack, backingStack))
+            {
+                return true;
+            }
+
+            string uiKey = AutoReader.GetItemKey(uiStack);
+            string backingKey = AutoReader.GetItemKey(backingStack);
+            if (string.IsNullOrEmpty(uiKey) ||
+                string.IsNullOrEmpty(backingKey) ||
+                !string.Equals(uiKey, backingKey, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return GetItemCount(uiStack) == GetItemCount(backingStack);
+        }
+
         private static XUiC_ItemStack TryFindItemStackGridControllerByStackReference(object grid, ItemStack stack)
         {
             var controllers = TryGetItemStackControllersArrayFromGrid(grid);
@@ -214,6 +243,16 @@ namespace AutoReadMod
                 var c = controllers.GetValue(i) as XUiC_ItemStack;
                 var uiStack = TryGetItemStackFromLootSlotController(c);
                 if (!ReferenceEquals(uiStack, null) && ReferenceEquals(uiStack, stack))
+                {
+                    return c;
+                }
+            }
+
+            for (var i = 0; i < controllers.Length; i++)
+            {
+                var c = controllers.GetValue(i) as XUiC_ItemStack;
+                var uiStack = TryGetItemStackFromLootSlotController(c);
+                if (BundleSlotStacksAlign(uiStack, stack))
                 {
                     return c;
                 }
