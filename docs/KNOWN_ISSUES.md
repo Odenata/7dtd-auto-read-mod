@@ -10,6 +10,14 @@ When several copies of the **same** magazine are consumed in one auto-read pass 
 
 Not important enough to fix right now.
 
+## Nerd Outfit extra skill points are not visualized
+
+When a **Nerd Outfit** bonus triggers during auto-read, the player can gain an extra crafting skill point beyond the magazine's normal point.
+
+**Actual progression** includes the extra point. The current auto-read notification only reports the readable item consumption, not the separate Nerd Outfit bonus grant.
+
+Nice-to-have follow-up: add a dedicated notification or decorate the existing notification when the bonus roll grants an extra point.
+
 ## Resolved: loot open spammed `InvalidCastException` / toolbelt XUi errors (fixed in mod)
 
 Opening a loot container with readables could flood the log with **`InvalidCastException: Specified cast is not valid`** from **`ItemActionEat.OnHoldingUpdate`** / **`IsActionRunning`** and **`[XUi] Error while updating window group 'toolbelt'`**.

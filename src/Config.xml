@@ -4,7 +4,7 @@
   <Enabled>true</Enabled>
 
   <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
-  <DebugMode>false</DebugMode>
+  <DebugMode>true</DebugMode>
 
   <!-- Which item types to auto-read when you open loot. Set to false to skip that type. Values: true, false -->
   <ItemTypes>

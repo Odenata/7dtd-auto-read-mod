@@ -1,10 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
+using System.Xml;
 namespace AutoReadMod
 {
     public static class AutoReader
     {
+        private static int _nextLootReadDebugId;
+        private static Dictionary<string, SyntheticReadableEffects> _cachedReadableEffectsByItemName;
+        private static bool _readableEffectsCacheLoaded;
+        private static readonly Random NerdBonusRandom = new Random();
+
         static AutoReader()
         {
             // When ModConfig.DebugMode is on, mirror hypothesis lines to Unity so Player.log is useful in-game.
@@ -30,6 +37,43 @@ namespace AutoReadMod
         private static void LogHypothesis(string line)
         {
             GameReflection.EmitHypothesisLine("[AutoReadMod:HYP:AutoReader] " + line);
+        }
+
+        private static int NextLootReadDebugId()
+        {
+            return System.Threading.Interlocked.Increment(ref _nextLootReadDebugId);
+        }
+
+        private static string CurrentFrameForDebug()
+        {
+            try
+            {
+                var frameProp = typeof(UnityEngine.Time).GetProperty(
+                    "frameCount",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                var value = frameProp?.GetValue(null, null);
+                return value?.ToString() ?? "?";
+            }
+            catch
+            {
+                return "?";
+            }
+        }
+
+        private static void LogLootSnapshot(
+            int readId,
+            string phase,
+            EntityPlayer player,
+            ItemStack lootBacking,
+            XUiC_ItemStack uiController = null)
+        {
+            LogHypothesis(
+                $"LootDbg#{readId} frame={CurrentFrameForDebug()} {phase}: {GameReflection.FormatLootReadSnapshot(player, lootBacking, uiController)}");
+        }
+
+        internal static void EmitDebugFileLocation()
+        {
+            LogHypothesis($"Diagnostics file: {GameReflection.GetLootDebugFilePath() ?? "(unavailable)"}");
         }
 
         public enum ReadableItemKind
@@ -286,6 +330,66 @@ namespace AutoReadMod
             return $"{GameReflection.GetItemType(itemValue)}:{name}".ToLowerInvariant();
         }
 
+        /// <summary>
+        /// Verifies that a loot-window <see cref="XUiC_ItemStack"/> is showing the same item as the tile container stack
+        /// we intend to read. Index-based controller lookup can return slot 0 from the wrong grid (e.g. toolbelt),
+        /// which would make <see cref="ItemActionEat.ExecuteInstantAction"/> consume the hotbar instead of loot.
+        /// </summary>
+        private static bool LootUiStackMatchesContainerBacking(ItemStack uiStack, ItemStack containerBacking)
+        {
+            if (containerBacking == null || containerBacking.IsEmpty())
+            {
+                return false;
+            }
+
+            if (uiStack == null || uiStack.IsEmpty())
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(uiStack, containerBacking))
+            {
+                return true;
+            }
+
+            var uiKey = GetItemKey(uiStack);
+            var backKey = GetItemKey(containerBacking);
+            if (string.IsNullOrEmpty(uiKey) || string.IsNullOrEmpty(backKey) ||
+                !string.Equals(uiKey, backKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return GameReflection.GetItemCount(uiStack) == GameReflection.GetItemCount(containerBacking);
+        }
+
+        /// <summary>Resolves a loot <see cref="XUiC_ItemStack"/> only when its displayed stack matches the container backing.</summary>
+        private static XUiC_ItemStack ResolveSafeLootSlotController(
+            XUiC_LootWindowGroup lootWindowGroup,
+            ItemStack containerBacking,
+            int itemSlotIndex)
+        {
+            if (lootWindowGroup == null || containerBacking == null)
+            {
+                return null;
+            }
+
+            var byRef = GameReflection.TryGetLootSlotByStackReference(lootWindowGroup, containerBacking);
+            if (byRef != null)
+            {
+                return byRef;
+            }
+
+            if (itemSlotIndex < 0)
+            {
+                return null;
+            }
+
+            var byIdx = GameReflection.TryGetLootSlotItemStackController(lootWindowGroup, itemSlotIndex);
+            var probeUi = GameReflection.TryGetItemStackFromLootSlotController(byIdx);
+            return LootUiStackMatchesContainerBacking(probeUi, containerBacking) ? byIdx : null;
+        }
+
         /// <param name="itemSlotIndex">
         /// The slot this stack occupies in the current inventory, bag, or open loot container array.
         /// ItemActionEat.consume uses ItemInventoryData.slotIdx; passing -1 skips the paths that apply reader perks/recipes in many builds.
@@ -324,21 +428,18 @@ namespace AutoReadMod
             {
                 LogHypothesis(
                     $"ReadStack: item={itemName} currentCount={currentCount} targetCount={targetCount} slot={itemSlotIndex} source={source} playerType={player?.GetType().Name ?? "null"}");
+                var lootReadDebugId = lootWindowGroup != null ? NextLootReadDebugId() : 0;
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"ReadStack.begin slot={itemSlotIndex} item={itemName}", player, itemStack);
+                }
+
+                // Loot eat/instant paths must not receive XUiC_ItemStack (vanilla maps it to player slots — toolbelt slot 0 bug).
                 XUiC_ItemStack lootSlotController = null;
                 if (lootWindowGroup != null)
                 {
-                    if (itemSlotIndex >= 0)
-                    {
-                        lootSlotController = GameReflection.TryGetLootSlotItemStackController(lootWindowGroup, itemSlotIndex);
-                    }
-
-                    if (lootSlotController == null)
-                    {
-                        lootSlotController = GameReflection.TryGetLootSlotByStackReference(lootWindowGroup, itemStack);
-                    }
-
                     LogHypothesis(
-                        $"ReadStack: lootSlotController={(lootSlotController == null ? "null" : lootSlotController.GetType().Name)} slot={itemSlotIndex}");
+                        $"ReadStack: open loot slot={itemSlotIndex} — omit slot controller from ApplyReadableEffects (tile ItemStack only)");
                 }
                 else if (source == AutoReadVisualizationSource.Bundle && itemSlotIndex >= 0)
                 {
@@ -362,8 +463,19 @@ namespace AutoReadMod
                         $"ReadStack: bundleSlotController={(lootSlotController == null ? "null" : lootSlotController.GetType().Name)} bag={bundleReadFromBag} slot={itemSlotIndex}");
                 }
 
-                var successfulConsumes = ApplyReadableEffects(player, itemStack, targetCount, itemSlotIndex, lootSlotController);
+                var successfulConsumes = ApplyReadableEffects(
+                    player,
+                    itemStack,
+                    targetCount,
+                    itemSlotIndex,
+                    lootSlotController,
+                    lootWindowGroup,
+                    lootReadDebugId);
                 DebugLog($"Consumed {successfulConsumes}/{targetCount}x {itemName}, now updating slot");
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"ReadStack.afterApply successful={successfulConsumes}", player, itemStack);
+                }
 
                 if (successfulConsumes <= 0)
                 {
@@ -371,9 +483,15 @@ namespace AutoReadMod
                     return;
                 }
 
-                // Prefer post-read counts from the UI slot when present — backing inventory may still hold a stale ItemStack reference on new slots until sync.
+                // Open loot uses synthetic consumption and deliberately leaves UI/backing ItemStack counts untouched
+                // until the container slot update below. Some generated loot grids still expose the stale UI count
+                // here; trusting it re-adds already learned items to non-Untouched containers.
                 int remaining;
-                if (lootSlotController != null)
+                if (lootWindowGroup != null)
+                {
+                    remaining = Math.Max(0, currentCount - successfulConsumes);
+                }
+                else if (lootSlotController != null)
                 {
                     var uiStackAfter = GameReflection.TryGetItemStackFromLootSlotController(lootSlotController);
                     remaining = uiStackAfter != null
@@ -389,6 +507,11 @@ namespace AutoReadMod
                 remaining = Math.Max(0, Math.Min(currentCount, remaining));
 
                 LogHypothesis($"ReadStack: updating stack remaining={remaining} (initialCount={currentCount}, read {successfulConsumes}, lootUi={(lootSlotController != null)})");
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"ReadStack.beforeUpdateSlot remaining={remaining}", player, itemStack);
+                }
+
                 if (remaining == 0)
                 {
                     updateStack(GameReflection.GetEmptyItemStack());
@@ -397,6 +520,11 @@ namespace AutoReadMod
                 {
                     updateStack(new ItemStack(itemValue, remaining));
                     DebugLog($"Reduced stack to {remaining}");
+                }
+
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, "ReadStack.afterUpdateSlot", player, itemStack);
                 }
 
                 var kind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
@@ -415,9 +543,10 @@ namespace AutoReadMod
             ItemStack itemStack,
             int consumeCount,
             int itemSlotIndex = -1,
-            XUiC_ItemStack lootSlotController = null)
+            XUiC_ItemStack lootSlotController = null,
+            XUiC_LootWindowGroup lootWindowGroup = null)
         {
-            return ApplyReadableEffects(player, itemStack, consumeCount, itemSlotIndex, lootSlotController);
+            return ApplyReadableEffects(player, itemStack, consumeCount, itemSlotIndex, lootSlotController, lootWindowGroup, 0);
         }
 
         private static int ApplyReadableEffects(
@@ -425,7 +554,9 @@ namespace AutoReadMod
             ItemStack itemStack,
             int consumeCount,
             int itemSlotIndex = -1,
-            XUiC_ItemStack lootSlotController = null)
+            XUiC_ItemStack lootSlotController = null,
+            XUiC_LootWindowGroup lootWindowGroup = null,
+            int lootReadDebugId = 0)
         {
             var itemValue = GameReflection.GetItemValue(itemStack);
             var itemClass = GameReflection.GetItemClass(itemValue);
@@ -522,9 +653,29 @@ namespace AutoReadMod
                 return 0;
             }
 
-            // Open loot: never pass loot grid indices as player inventory slotIdx (toolbelt corruption + cast spam).
-            // Use -1 for consume/GainSkill/LearnRecipe ItemInventoryData; run ItemActionLearnRecipe after Eat succeeds.
-            var readingFromOpenLoot = lootSlotController != null;
+            // Tile loot (loot UI open): never pass loot grid indices as player toolbelt/inventory slotIdx (toolbelt corruption + cast spam).
+            // Use -1 for consume/GainSkill/LearnRecipe ItemInventoryData; run ItemActionLearnRecipe / CraftingManager fallback after Eat succeeds.
+            //
+            // Never pass loot XUiC_ItemStack into ItemActionEat.ExecuteInstantAction / eat paths: vanilla uses that controller to resolve
+            // *player* inventory slots. Even when ItemStack args reference the tile entity, slot 0 controllers often map to the toolbelt and
+            // consume hotbar slot 0 (e.g. axe). Only mutate the tile backing ItemStack passed into this method.
+            var readingFromOpenLoot = lootWindowGroup != null;
+            if (readingFromOpenLoot)
+            {
+                lootSlotController = null;
+            }
+
+            if (readingFromOpenLoot && player != null &&
+                GameReflection.ItemStackAliasesPlayerInventoryOrBag(player, itemStack))
+            {
+                SafeLog(
+                    $"ApplyReadableEffects: refused loot read — ItemStack reference matches a player inventory/bag slot (possible engine alias / hotbar corruption). {itemName}");
+                LogHypothesis(
+                    $"ApplyReadableEffects: abort loot read for {itemName} — stack reference aliases player grid");
+                return 0;
+            }
+
+            var vanillaInstantActionOwnsEvents = !readingFromOpenLoot && lootSlotController != null;
             var slotForConsumeAndSkills = readingFromOpenLoot ? -1 : itemSlotIndex;
             var slotForMinEvents = readingFromOpenLoot ? -1 : itemSlotIndex;
             if (slotForConsumeAndSkills < 0 && !readingFromOpenLoot)
@@ -536,17 +687,32 @@ namespace AutoReadMod
             if (readingFromOpenLoot)
             {
                 LogHypothesis(
-                    $"ApplyReadableEffects: open loot — consume/skill/learn use slotIdx=-1; min-events slotIdx=-1; learnRecipeAfterEat={(learnRecipeAction != null)}");
+                    $"ApplyReadableEffects: loot container UI — tile backing stack only, slotIdx=-1, no XUiC_ItemStack on eat/instant paths; learnRecipeAfterEat={(learnRecipeAction != null)}");
+                LogLootSnapshot(lootReadDebugId, "ApplyReadableEffects.begin", player, itemStack, lootSlotController);
             }
 
             DebugLog(
-                $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} (slotIdx={itemSlotIndex}, consumeSlot={slotForConsumeAndSkills}), lootUi={(lootSlotController == null ? "no" : "yes")}, Eat/GainSkill/LearnRecipe/FireEvent paths");
+                $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} (slotIdx={itemSlotIndex}, consumeSlot={slotForConsumeAndSkills}), lootUiEatCtrl={(lootSlotController == null ? "no" : "yes")}, Eat/GainSkill/LearnRecipe/FireEvent paths");
 
-            var progressionNames = ResolveGainSkillProgressionNames(gainSkillAction, itemClass);
-            if (gainSkillAction != null)
+            var xmlReadableEffects = readingFromOpenLoot
+                ? ResolveSyntheticReadableEffects(itemClass)
+                : SyntheticReadableEffects.Empty;
+            var xmlProgressionEffectsOwnLearning = readingFromOpenLoot &&
+                                                   (xmlReadableEffects.AddProgressionNames.Length > 0 ||
+                                                    xmlReadableEffects.MaxProgressionNames.Length > 0);
+            var shouldFireOpenLootItemEvents = readingFromOpenLoot &&
+                                               IsSkillMagazineItemClass(itemClass) &&
+                                               xmlReadableEffects.AddProgressionNames.Length > 0;
+            var progressionNames = ResolveGainSkillProgressionNames(gainSkillAction, itemClass, xmlReadableEffects);
+            if (gainSkillAction != null || readingFromOpenLoot)
             {
                 LogHypothesis(
                     $"ApplyReadableEffects: resolved gain-skill progressions for {itemName}: {(progressionNames.Length == 0 ? "(none)" : string.Join(",", progressionNames))}");
+                if (readingFromOpenLoot && xmlReadableEffects.HasAny)
+                {
+                    LogHypothesis(
+                        $"ApplyReadableEffects: XML synthetic effects for {itemName}: add=[{string.Join(",", xmlReadableEffects.AddProgressionNames)}] max=[{string.Join(",", xmlReadableEffects.MaxProgressionNames)}] cvar=[{string.Join(",", xmlReadableEffects.SetCVarNames)}]");
+                }
             }
 
             var stackEffectSkillLevelsBefore = CaptureGainSkillLevels(progressionNames, effectEntity);
@@ -573,13 +739,13 @@ namespace AutoReadMod
                 DebugLog($"Consuming item {i + 1}/{effectiveCount}");
                 try
                 {
-                    // Keep the live slot stack as the source of truth. Vanilla read actions mutate
-                    // that stack; synthetic clones can apply effects without consuming inventory.
+                    // Keep the live slot stack as the source of truth. Vanilla read actions mutate that stack.
+                    // Open loot: always use the tile backing ItemStack only — never swap in loot UI stacks (see readingFromOpenLoot + null controller).
                     ItemStack liveStack = itemStack;
-                    if (lootSlotController != null)
+                    if (!readingFromOpenLoot && lootSlotController != null)
                     {
                         var fromUi = GameReflection.TryGetItemStackFromLootSlotController(lootSlotController);
-                        if (fromUi != null && !fromUi.IsEmpty())
+                        if (fromUi != null && !fromUi.IsEmpty() && LootUiStackMatchesContainerBacking(fromUi, itemStack))
                         {
                             liveStack = fromUi;
                         }
@@ -591,70 +757,114 @@ namespace AutoReadMod
                         break;
                     }
 
-                    int countStart = GameReflection.GetItemCount(liveStack);
+                    // Tile loot must measure/consume the backing stack passed from ProcessContainer (never UI clones).
+                    var stackForEatMeasure = readingFromOpenLoot ? itemStack : liveStack;
+                    int countStart = GameReflection.GetItemCount(stackForEatMeasure);
                     var effectStack = new ItemStack(itemValue, 1);
                     var effectSkillLevelsBefore = CaptureGainSkillLevels(progressionNames, effectEntity);
                     var playerSkillLevelsBefore = ReferenceEquals(effectEntity, player)
                         ? null
                         : CaptureGainSkillLevels(progressionNames, player);
 
-                    TryFireOnSelfPrimaryActionStart(
-                        itemClass,
-                        itemValue,
-                        gameManager,
-                        effectEntity,
-                        slotForMinEvents,
-                        itemName,
-                        i + 1,
-                        effectStack);
+                    if (!readingFromOpenLoot && !vanillaInstantActionOwnsEvents)
+                    {
+                        TryFireOnSelfPrimaryActionStart(
+                            itemClass,
+                            itemValue,
+                            gameManager,
+                            effectEntity,
+                            slotForMinEvents,
+                            itemName,
+                            i + 1,
+                            effectStack);
+                    }
+                    else if (vanillaInstantActionOwnsEvents)
+                    {
+                        LogHypothesis(
+                            $"ApplyReadableEffects: item {i + 1}: skipped manual FireStart; vanilla ExecuteInstantAction owns item events");
+                    }
+                    else
+                    {
+                        LogHypothesis(
+                            $"ApplyReadableEffects: item {i + 1}: loot — skipped FireStart; vanilla item events can route to hotbar state");
+                    }
 
                     int consumedThisUnit = 0;
                     if (eatAction != null)
                     {
-                        // Manual reads use ItemActionEat.ExecuteInstantAction(entity, stack, false, controller).
-                        // Run that first for both loot and bundle outputs; some builds return false
-                        // even after mutating the stack, so success is measured from the stack delta.
-                        var stackForInstant = lootSlotController != null
-                            ? (GameReflection.TryGetItemStackFromLootSlotController(lootSlotController) ?? liveStack)
-                            : liveStack;
-                        var instantOk = TryExecuteInstantActionReflection(
-                            eatAction,
-                            effectEntity,
-                            stackForInstant,
-                            itemName,
-                            i + 1,
-                            effectiveCount,
-                            lootSlotController,
-                            treatSuccessfulInvokeAsSuccess: false);
-                        LogHypothesis(
-                            $"ApplyReadableEffects: item {i + 1}: ExecuteInstantAction first success={instantOk} uiCtrl={(lootSlotController == null ? "null" : "non-null")} for {itemName}");
-
-                        var afterInstantStack = lootSlotController != null
-                            ? (GameReflection.TryGetItemStackFromLootSlotController(lootSlotController) ?? stackForInstant)
-                            : stackForInstant;
-                        consumedThisUnit = Math.Max(0, countStart - GameReflection.GetItemCount(afterInstantStack));
-                        consumedThisUnit = Math.Min(consumedThisUnit, effectiveCount - successfulConsumes);
-
-                        if (consumedThisUnit <= 0)
+                        bool MeasureConsumeDelta(out int delta)
                         {
-                            if (TryConsumeEatActionReflection(
-                                    eatAction,
-                                    itemClass,
-                                    liveStack,
-                                    gameManager,
-                                    effectEntity,
-                                    itemValue,
-                                    slotForConsumeAndSkills,
-                                    eatActionIndex,
-                                    itemName,
-                                    i + 1,
-                                    effectiveCount))
+                            ItemStack afterStack;
+                            if (readingFromOpenLoot)
                             {
-                                var afterConsumeStack = lootSlotController != null
-                                    ? (GameReflection.TryGetItemStackFromLootSlotController(lootSlotController) ?? liveStack)
-                                    : liveStack;
-                                consumedThisUnit = Math.Max(0, countStart - GameReflection.GetItemCount(afterConsumeStack));
-                                consumedThisUnit = Math.Min(consumedThisUnit, effectiveCount - successfulConsumes);
+                                afterStack = stackForEatMeasure;
+                            }
+                            else if (lootSlotController != null)
+                            {
+                                afterStack = GameReflection.TryGetItemStackFromLootSlotController(lootSlotController) ??
+                                             liveStack;
+                            }
+                            else
+                            {
+                                afterStack = liveStack;
+                            }
+
+                            delta = Math.Max(0, countStart - GameReflection.GetItemCount(afterStack));
+                            delta = Math.Min(delta, effectiveCount - successfulConsumes);
+                            return delta > 0;
+                        }
+
+                        if (readingFromOpenLoot)
+                        {
+                            // Never call vanilla ItemActionEat paths for tile loot. Logs proved ExecuteAction(true)
+                            // clears player hotbar slot 0 while leaving the loot stack unchanged. Treat this unit as
+                            // successfully read, then apply explicit progression/recipe fallbacks and update container.
+                            consumedThisUnit = Math.Min(1, effectiveCount - successfulConsumes);
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: loot — synthetic consume counted {consumedThisUnit}; skipped ItemActionEat ExecuteAction/consume/Completed for {itemName}");
+                            LogLootSnapshot(lootReadDebugId, $"after SyntheticLootConsume unit={i + 1} consumed={consumedThisUnit}", player, itemStack, lootSlotController);
+                        }
+                        else
+                        {
+                            var stackForInstant = lootSlotController != null
+                                ? (GameReflection.TryGetItemStackFromLootSlotController(lootSlotController) ?? liveStack)
+                                : liveStack;
+
+                            var instantOk = TryExecuteInstantActionReflection(
+                                eatAction,
+                                effectEntity,
+                                stackForInstant,
+                                itemName,
+                                i + 1,
+                                effectiveCount,
+                                lootSlotController,
+                                treatSuccessfulInvokeAsSuccess: false);
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: ExecuteInstantAction first success={instantOk} uiCtrl={(lootSlotController == null ? "null" : "non-null")} for {itemName}");
+
+                            MeasureConsumeDelta(out consumedThisUnit);
+
+                            if (consumedThisUnit <= 0)
+                            {
+                                if (TryConsumeEatActionReflection(
+                                        eatAction,
+                                        itemClass,
+                                        liveStack,
+                                        gameManager,
+                                        effectEntity,
+                                        itemValue,
+                                        slotForConsumeAndSkills,
+                                        eatActionIndex,
+                                        itemName,
+                                        i + 1,
+                                        effectiveCount,
+                                        lootReadDebugId,
+                                        player,
+                                        itemStack,
+                                        lootSlotController))
+                                {
+                                    MeasureConsumeDelta(out consumedThisUnit);
+                                }
                             }
                         }
 
@@ -662,16 +872,31 @@ namespace AutoReadMod
                         {
                             LogHypothesis(
                                 $"ApplyReadableEffects: item {i + 1}: consumed {consumedThisUnit} via vanilla read path for {itemName}");
-                            TryFireOnSelfPrimaryActionEnd(
-                                itemClass,
-                                itemValue,
-                                gameManager,
-                                effectEntity,
-                                slotForMinEvents,
-                                itemName,
-                                i + 1,
-                                "after vanilla read path",
-                                effectStack);
+                            if (!readingFromOpenLoot && !vanillaInstantActionOwnsEvents)
+                            {
+                                TryFireOnSelfPrimaryActionEnd(
+                                    itemClass,
+                                    itemValue,
+                                    gameManager,
+                                    effectEntity,
+                                    slotForMinEvents,
+                                    itemName,
+                                    i + 1,
+                                    "after vanilla read path",
+                            effectStack);
+                            }
+                            else if (vanillaInstantActionOwnsEvents)
+                            {
+                                LogHypothesis(
+                                    $"ApplyReadableEffects: item {i + 1}: skipped manual FireEnd; vanilla ExecuteInstantAction owns item events");
+                            }
+                            else
+                            {
+                                LogHypothesis(
+                                    shouldFireOpenLootItemEvents
+                                        ? $"ApplyReadableEffects: item {i + 1}: loot — defer FireEnd until after event baseline capture"
+                                        : $"ApplyReadableEffects: item {i + 1}: loot — skipped FireEnd; synthetic path owns progression/recipe effects");
+                            }
                         }
                         else
                         {
@@ -684,25 +909,88 @@ namespace AutoReadMod
                         LogHypothesis($"ApplyReadableEffects: item {i + 1}: no ItemActionEat — gain-skill action alone cannot consume {itemName}");
                     }
 
-                    if (consumedThisUnit > 0 && gainSkillAction != null)
+                    if (consumedThisUnit > 0 && gainSkillAction != null && !xmlProgressionEffectsOwnLearning)
                     {
-                        var skillOk = TryGainSkillExecuteActionReflection(
-                            gainSkillAction,
-                            itemClass,
-                            effectStack,
-                            gameManager,
+                        if (readingFromOpenLoot)
+                        {
+                            // Avoid ItemActionGainSkill.ExecuteAction for loot: same ItemActionData stack/slot context risk as eat.
+                            ApplyMissingGainSkillLevels(
+                                effectEntity,
+                                progressionNames,
+                                effectSkillLevelsBefore,
+                                consumedThisUnit,
+                                itemName,
+                                i + 1,
+                                "effect entity loot synthetic gain action");
+                            if (!ReferenceEquals(effectEntity, player))
+                            {
+                                ApplyMissingGainSkillLevels(
+                                    player,
+                                    progressionNames,
+                                    playerSkillLevelsBefore,
+                                    consumedThisUnit,
+                                    itemName,
+                                    i + 1,
+                                    "context player loot synthetic gain action");
+                            }
+
+                            LogLootSnapshot(lootReadDebugId, $"after SyntheticGainSkill unit={i + 1}", player, itemStack, lootSlotController);
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: loot — skipped ItemActionGainSkill.ExecuteAction; fallback progressions={progressionNames.Length}");
+                        }
+                        else
+                        {
+                            var skillOk = TryGainSkillExecuteActionReflection(
+                                gainSkillAction,
+                                itemClass,
+                                effectStack,
+                                gameManager,
+                                effectEntity,
+                                itemValue,
+                                slotForConsumeAndSkills,
+                                gainSkillActionIndex,
+                                itemName,
+                                i + 1,
+                                effectiveCount,
+                                progressionNames,
+                                effectSkillLevelsBefore,
+                                consumedThisUnit);
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: ItemActionGainSkill.ExecuteAction={skillOk} after consume for {itemName}");
+
+                            if (!ReferenceEquals(effectEntity, player))
+                            {
+                                ApplyMissingGainSkillLevels(
+                                    player,
+                                    progressionNames,
+                                    playerSkillLevelsBefore,
+                                    consumedThisUnit,
+                                    itemName,
+                                    i + 1,
+                                    "context player");
+                            }
+                        }
+                    }
+                    else if (consumedThisUnit > 0 &&
+                             gainSkillAction == null &&
+                             progressionNames.Length > 0 &&
+                             !xmlProgressionEffectsOwnLearning)
+                    {
+                        // Eat-only magazines (no ItemActionGainSkill): vanilla may not bump crafting tiers with loot slotIdx=-1; mirror bundle reconciliation per unit.
+                        ApplyMissingGainSkillLevels(
                             effectEntity,
-                            itemValue,
-                            slotForConsumeAndSkills,
-                            gainSkillActionIndex,
-                            itemName,
-                            i + 1,
-                            effectiveCount,
                             progressionNames,
                             effectSkillLevelsBefore,
-                            consumedThisUnit);
+                            consumedThisUnit,
+                            itemName,
+                            i + 1,
+                            "effect entity eat-only after loot consume");
+                        if (readingFromOpenLoot)
+                        {
+                            LogLootSnapshot(lootReadDebugId, $"after EatOnlyGainFallback unit={i + 1}", player, itemStack, lootSlotController);
+                        }
                         LogHypothesis(
-                            $"ApplyReadableEffects: item {i + 1}: ItemActionGainSkill.ExecuteAction={skillOk} after consume for {itemName}");
+                            $"ApplyReadableEffects: item {i + 1}: GainSkill fallback after eat-only consume for {itemName} (progressions={progressionNames.Length})");
 
                         if (!ReferenceEquals(effectEntity, player))
                         {
@@ -713,41 +1001,102 @@ namespace AutoReadMod
                                 consumedThisUnit,
                                 itemName,
                                 i + 1,
-                                "context player");
+                                "context player eat-only after loot consume");
                         }
+                    }
+
+                    Dictionary<string, int> effectEntityOpenLootEventBaseline = null;
+                    if (consumedThisUnit > 0 && shouldFireOpenLootItemEvents)
+                    {
+                        effectEntityOpenLootEventBaseline = CaptureGainSkillLevels(
+                            xmlReadableEffects.AddProgressionNames,
+                            effectEntity);
+                        TryFireOnSelfPrimaryActionEnd(
+                            itemClass,
+                            itemValue,
+                            gameManager,
+                            effectEntity,
+                            slotForMinEvents,
+                            itemName,
+                            i + 1,
+                            "open loot conditional item effects",
+                            effectStack,
+                            eatAction,
+                            eatActionIndex);
+                        LogLootSnapshot(lootReadDebugId, $"after OpenLootFireEnd unit={i + 1}", player, itemStack, lootSlotController);
+                    }
+
+                    if (readingFromOpenLoot && consumedThisUnit > 0 && xmlReadableEffects.HasAny)
+                    {
+                        ApplySyntheticXmlReadableEffects(
+                            effectEntity,
+                            xmlReadableEffects,
+                            consumedThisUnit,
+                            itemName,
+                            i + 1,
+                            "effect entity",
+                            effectEntityOpenLootEventBaseline);
+                        if (shouldFireOpenLootItemEvents)
+                        {
+                            ApplyNerdOutfitMagazineBonusFromGameCVar(
+                                effectEntity,
+                                xmlReadableEffects.AddProgressionNames,
+                                consumedThisUnit,
+                                itemName,
+                                i + 1,
+                                "effect entity",
+                                effectEntityOpenLootEventBaseline);
+                        }
+
+                        if (!ReferenceEquals(effectEntity, player))
+                        {
+                            ApplySyntheticXmlReadableEffects(
+                                player,
+                                xmlReadableEffects,
+                                consumedThisUnit,
+                                itemName,
+                                i + 1,
+                                "context player");
+                            if (shouldFireOpenLootItemEvents)
+                            {
+                                ApplyNerdOutfitMagazineBonusFromGameCVar(
+                                    player,
+                                    xmlReadableEffects.AddProgressionNames,
+                                    consumedThisUnit,
+                                    itemName,
+                                    i + 1,
+                                    "context player",
+                                    null);
+                            }
+                        }
+
+                        LogLootSnapshot(lootReadDebugId, $"after XmlSyntheticEffects unit={i + 1}", player, itemStack, lootSlotController);
                     }
 
                     if (consumedThisUnit > 0 && learnRecipeAction != null)
                     {
-                        var recipeOk = TryLearnRecipeExecuteActionReflection(
-                            learnRecipeAction,
-                            itemClass,
-                            effectStack,
-                            gameManager,
-                            effectEntity,
-                            itemValue,
-                            slotForConsumeAndSkills,
-                            learnRecipeActionIndex,
-                            itemName,
-                            i + 1,
-                            effectiveCount,
-                            consumedThisUnit);
-                        LogHypothesis(
-                            $"ApplyReadableEffects: item {i + 1}: ItemActionLearnRecipe.ExecuteAction invoked ok={recipeOk} for {itemName}");
-                    }
-
-                    if (readingFromOpenLoot && consumedThisUnit > 0)
-                    {
-                        var readableKind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
-                        if (readableKind == ReadableItemKind.Schematic || readableKind == ReadableItemKind.Recipe)
+                        if (readingFromOpenLoot)
                         {
-                            TryUnlockLootSchematicRecipesViaCraftingManager(
-                                player,
-                                gameManager,
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: loot — skipped ItemActionLearnRecipe.ExecuteAction; CraftingManager fallback will run");
+                        }
+                        else
+                        {
+                            var recipeOk = TryLearnRecipeExecuteActionReflection(
+                                learnRecipeAction,
                                 itemClass,
-                                itemActions,
+                                effectStack,
+                                gameManager,
+                                effectEntity,
+                                itemValue,
+                                slotForConsumeAndSkills,
+                                learnRecipeActionIndex,
                                 itemName,
-                                i + 1);
+                                i + 1,
+                                effectiveCount,
+                                consumedThisUnit);
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: ItemActionLearnRecipe.ExecuteAction invoked ok={recipeOk} for {itemName}");
                         }
                     }
 
@@ -755,6 +1104,33 @@ namespace AutoReadMod
                     {
                         successfulConsumes += consumedThisUnit;
                         DebugLog($"Applied effect for item {i + 1}/{effectiveCount} (stack -{consumedThisUnit})");
+                    }
+
+                    // Run after counting success so reflection/search bugs cannot undo a valid consume/stack update.
+                    // Always attempt CraftingManager unlock for loot reads: ItemActionLearnRecipe + MoldTarget/name heuristics
+                    // populate candidates; harmless no-op when none match. Name-based ReadableItemKind alone can miss mods/vanilla ids.
+                    if (readingFromOpenLoot && consumedThisUnit > 0)
+                    {
+                        try
+                        {
+                            LogLootSnapshot(lootReadDebugId, $"before CraftingManagerFallback unit={i + 1}", player, itemStack, lootSlotController);
+                            TryUnlockLootSchematicRecipesViaCraftingManager(
+                                player,
+                                gameManager,
+                                itemClass,
+                                itemActions,
+                                itemName,
+                                i + 1);
+                            LogLootSnapshot(lootReadDebugId, $"after CraftingManagerFallback unit={i + 1}", player, itemStack, lootSlotController);
+                        }
+                        catch (Exception unlockEx)
+                        {
+                            var root = UnwrapReflectionException(unlockEx);
+                            SafeLog(
+                                $"Loot schematic recipe unlock fallback failed for {itemName}: {root.Message}");
+                            LogHypothesis(
+                                $"LootRecipeFallback exception [{i + 1}] {itemName}: {root.GetType().Name}: {root.Message}");
+                        }
                     }
                 }
                 catch (Exception consumeEx)
@@ -765,7 +1141,7 @@ namespace AutoReadMod
                 }
             }
 
-            if (successfulConsumes > 0 && progressionNames.Length > 0)
+            if (successfulConsumes > 0 && progressionNames.Length > 0 && !xmlProgressionEffectsOwnLearning)
             {
                 ApplyMissingGainSkillLevels(
                     effectEntity,
@@ -789,7 +1165,7 @@ namespace AutoReadMod
                 }
             }
 
-            if (successfulConsumes > 1)
+            if (successfulConsumes > 1 && !xmlProgressionEffectsOwnLearning)
             {
                 TryReconcileQuickListUnderGranted(
                     effectEntity,
@@ -869,7 +1245,9 @@ namespace AutoReadMod
             string itemName,
             int unitIndex,
             string reason,
-            ItemStack stackForEvent)
+            ItemStack stackForEvent,
+            object eventAction = null,
+            int eventActionIndex = -1)
         {
             try
             {
@@ -892,6 +1270,28 @@ namespace AutoReadMod
                 {
                     LogHypothesis($"TryFireOnSelfPrimaryActionEnd [{unitIndex}] {itemName}: skipped (no MinEventParams) reason={reason}");
                     return;
+                }
+
+                if (eventAction != null)
+                {
+                    object actionData = null;
+                    var actionIndex = eventActionIndex >= 0 ? eventActionIndex : 0;
+                    if (GameReflection.TryInvokeInstanceMethod(eventAction, "CreateModifierData", out actionData, invData, actionIndex) &&
+                        actionData != null)
+                    {
+                        GameReflection.SetMemberValue(actionData, "EventParms", evtParams);
+                        GameReflection.SetMemberValue(actionData, "eventParms", evtParams);
+                        GameReflection.SetMemberValue(actionData, "EventParams", evtParams);
+                        GameReflection.SetMemberValue(actionData, "invData", invData);
+                        GameReflection.SetMemberValue(actionData, "indexInEntityOfAction", actionIndex);
+                        GameReflection.SetMemberValue(evtParams, "ItemActionData", actionData);
+                        GameReflection.SetMemberValue(evtParams, "itemActionData", actionData);
+                        LogHypothesis($"TryFireOnSelfPrimaryActionEnd [{unitIndex}] {itemName}: attached actionData={actionData.GetType().Name} reason={reason}");
+                    }
+                    else
+                    {
+                        LogHypothesis($"TryFireOnSelfPrimaryActionEnd [{unitIndex}] {itemName}: no actionData for event action reason={reason}");
+                    }
                 }
 
                 itemClass.FireEvent(MinEventTypes.onSelfPrimaryActionEnd, evtParams);
@@ -919,10 +1319,19 @@ namespace AutoReadMod
             int eatActionIndex,
             string itemName,
             int unitIndex,
-            int effectiveCount)
+            int effectiveCount,
+            int lootReadDebugId = 0,
+            EntityPlayer debugPlayer = null,
+            ItemStack debugLootBacking = null,
+            XUiC_ItemStack debugUiController = null)
         {
             try
             {
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.enter unit={unitIndex}", debugPlayer, debugLootBacking, debugUiController);
+                }
+
                 var invData = GameReflection.CreateItemInventoryData(
                     itemClass,
                     stackForConsume,
@@ -935,11 +1344,21 @@ namespace AutoReadMod
                     LogHypothesis($"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: CreateItemInventoryData returned null (stackForConsume.count={GameReflection.GetItemCount(stackForConsume)})");
                     return false;
                 }
+                if (lootReadDebugId != 0)
+                {
+                    LogHypothesis(
+                        $"LootDbg#{lootReadDebugId} TryConsume.invData unit={unitIndex}: invDataRef={System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(invData)} invStackRef={System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(stackForConsume)} slotIdx={itemSlotIndex} holder={effectEntity?.GetType().FullName ?? "null"}");
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.afterCreateInvData unit={unitIndex}", debugPlayer, debugLootBacking, debugUiController);
+                }
 
                 LogHypothesis(
                     $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: invDataType={invData.GetType().Name} slotIdx={itemSlotIndex} will try CreateModifierData then ExecuteAction(true), else consume");
 
                 object actionData = null;
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.beforeCreateModifierData unit={unitIndex}", debugPlayer, debugLootBacking, debugUiController);
+                }
                 if (!GameReflection.TryInvokeInstanceMethod(eatAction, "CreateModifierData", out actionData, invData, eatActionIndex) || actionData == null)
                 {
                     if (eatActionIndex == 0)
@@ -956,19 +1375,58 @@ namespace AutoReadMod
                         return false;
                     }
                 }
+                if (lootReadDebugId != 0)
+                {
+                    LogHypothesis(
+                        $"LootDbg#{lootReadDebugId} TryConsume.actionData unit={unitIndex}: actionDataType={actionData?.GetType().FullName ?? "null"} actionDataRef={(actionData == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(actionData))}");
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.afterCreateModifierData unit={unitIndex}", debugPlayer, debugLootBacking, debugUiController);
+                }
 
-                // Real game: ItemActionEat overrides ExecuteAction (books/schematics); consume() is a separate hook and is not always the path that applies progression.
+                // Books/mags often apply perks via effect_groups that expect EventParms on ItemActionData (same as GainSkill/LearnRecipe paths).
+                AttachEventParamsToActionData(
+                    actionData,
+                    itemClass,
+                    itemValue,
+                    invData,
+                    gameManager,
+                    effectEntity,
+                    itemSlotIndex,
+                    itemName,
+                    unitIndex);
+
+                // Vanilla ItemActionEat: ExecuteAction(released) may apply read logic without decrementing the stack;
+                // if the stack count is unchanged, still invoke consume() so the item is actually removed (see mod API notes).
+                var countBeforeEat = GameReflection.GetItemCount(stackForConsume);
+                var invokedEatStep = false;
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.beforeExecuteAction unit={unitIndex} stackCount={countBeforeEat}", debugPlayer, debugLootBacking, debugUiController);
+                }
                 if (GameReflection.TryInvokeInstanceMethod(eatAction, "ExecuteAction", out var _, actionData, true))
                 {
+                    invokedEatStep = true;
                     LogHypothesis(
-                        $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: ExecuteAction(true) ran (ItemAction entry) actionDataType={actionData?.GetType().Name ?? "null"}");
+                        $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: ExecuteAction(true) ran actionDataType={actionData?.GetType().Name ?? "null"}");
                 }
-                else if (GameReflection.TryInvokeInstanceMethod(eatAction, "consume", out var _, actionData))
+                if (lootReadDebugId != 0)
                 {
-                    LogHypothesis(
-                        $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: consume() ran (ExecuteAction missing) actionDataType={actionData?.GetType().Name ?? "null"}");
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.afterExecuteAction unit={unitIndex} stackCount={GameReflection.GetItemCount(stackForConsume)}", debugPlayer, debugLootBacking, debugUiController);
                 }
-                else
+
+                var countAfterExecuteAction = GameReflection.GetItemCount(stackForConsume);
+                if (countAfterExecuteAction >= countBeforeEat &&
+                    GameReflection.TryInvokeInstanceMethod(eatAction, "consume", out var _, actionData))
+                {
+                    invokedEatStep = true;
+                    LogHypothesis(
+                        $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: consume() ran (stack unchanged after ExecuteAction or no ExecuteAction) actionDataType={actionData?.GetType().Name ?? "null"}");
+                }
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.afterConsume unit={unitIndex} stackCount={GameReflection.GetItemCount(stackForConsume)}", debugPlayer, debugLootBacking, debugUiController);
+                }
+
+                if (!invokedEatStep)
                 {
                     LogHypothesis(
                         $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: neither ExecuteAction(true) nor consume invoked actionDataType={actionData?.GetType().Name ?? "null"}");
@@ -978,6 +1436,18 @@ namespace AutoReadMod
                 if (GameReflection.TryInvokeInstanceMethod(eatAction, "Completed", out var _, actionData))
                 {
                     LogHypothesis($"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: Completed() ran after eat action");
+                }
+                if (lootReadDebugId != 0)
+                {
+                    LogLootSnapshot(lootReadDebugId, $"TryConsume.afterCompleted unit={unitIndex}", debugPlayer, debugLootBacking, debugUiController);
+                }
+
+                var countEnd = GameReflection.GetItemCount(stackForConsume);
+                if (countEnd >= countBeforeEat)
+                {
+                    LogHypothesis(
+                        $"TryConsume [{unitIndex}/{effectiveCount}] {itemName}: stack did not decrease (before={countBeforeEat}, after={countEnd}); caller may fall back to instant action");
+                    return false;
                 }
 
                 return true;
@@ -1260,7 +1730,10 @@ namespace AutoReadMod
                 return;
             }
 
-            var craftingManager = TryGetCraftingManager(gameManager);
+            // UnlockRecipe is authored for the local player in SP; context patch player may differ on some paths.
+            var unlockPlayer = GameReflection.TryGetLocalEntityPlayer() ?? player;
+
+            var craftingManager = GameReflection.TryResolveCraftingManager(gameManager, unlockPlayer);
             if (craftingManager == null)
             {
                 LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: CraftingManager not resolved");
@@ -1297,50 +1770,43 @@ namespace AutoReadMod
                     continue;
                 }
 
-                if (GameReflection.TryInvokeInstanceMethod(craftingManager, "UnlockRecipe", out var _, recipe, player))
+                if (TryCraftingManagerUnlockRecipeByNameOrObject(craftingManager, recipe, unlockPlayer, unitIndex, itemName))
                 {
-                    LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: UnlockRecipe(\"{recipe}\") invoked");
+                    LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: UnlockRecipe for \"{recipe}\" invoked");
                 }
                 else
                 {
-                    LogHypothesis($"LootRecipeFallback [{unitIndex}] {itemName}: UnlockRecipe(\"{recipe}\") not invoked (missing overload or void)");
+                    LogHypothesis(
+                        $"LootRecipeFallback [{unitIndex}] {itemName}: UnlockRecipe for \"{recipe}\" not applied (no matching overload or GetRecipe miss)");
                 }
             }
         }
 
-        private static object TryGetCraftingManager(object gameManager)
+        /// <summary>Tries <c>UnlockRecipe(string, EntityPlayer)</c> then <c>GetRecipe(string)</c> + <c>UnlockRecipe(Recipe, EntityPlayer)</c>.</summary>
+        private static bool TryCraftingManagerUnlockRecipeByNameOrObject(
+            object craftingManager,
+            string recipeName,
+            EntityPlayer unlockPlayer,
+            int unitIndex,
+            string itemName)
         {
-            if (gameManager == null)
+            if (craftingManager == null || string.IsNullOrWhiteSpace(recipeName) || unlockPlayer == null)
             {
-                return null;
+                return false;
             }
 
-            foreach (var key in new[] { "craftingManager", "CraftingManager", "mCraftingManager" })
+            if (GameReflection.TryInvokeInstanceMethod(craftingManager, "UnlockRecipe", out var _, recipeName, unlockPlayer))
             {
-                var cm = GameReflection.GetMemberValue<object>(gameManager, key);
-                if (cm != null && cm.GetType().Name == "CraftingManager")
-                {
-                    return cm;
-                }
+                return true;
             }
 
-            var world = GameReflection.GetMemberValue<object>(gameManager, "m_World")
-                ?? GameReflection.GetMemberValue<object>(gameManager, "World");
-            if (world == null)
+            if (!GameReflection.TryInvokeInstanceMethod(craftingManager, "GetRecipe", out var recipeObj, recipeName) ||
+                recipeObj == null)
             {
-                return null;
+                return false;
             }
 
-            foreach (var key in new[] { "craftingManager", "CraftingManager", "mCraftingManager" })
-            {
-                var cm = GameReflection.GetMemberValue<object>(world, key);
-                if (cm != null && cm.GetType().Name == "CraftingManager")
-                {
-                    return cm;
-                }
-            }
-
-            return null;
+            return GameReflection.TryInvokeInstanceMethod(craftingManager, "UnlockRecipe", out var _, recipeObj, unlockPlayer);
         }
 
         private static void CollectRecipesToLearnFromLearnRecipeAction(object learnRecipeAction, HashSet<string> recipeNames)
@@ -1352,21 +1818,63 @@ namespace AutoReadMod
 
             try
             {
-                var arr = GameReflection.GetMemberValue<string[]>(learnRecipeAction, "RecipesToLearn");
-                if (arr != null)
+                AddRecipeNameStringsFromArrayMember(learnRecipeAction, "RecipesToLearn", recipeNames);
+                AddRecipeNameStringsFromArrayMember(learnRecipeAction, "recipesToLearn", recipeNames);
+
+                var t = learnRecipeAction.GetType();
+                foreach (var fi in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
                 {
-                    foreach (var entry in arr)
+                    if (fi.FieldType != typeof(string[]))
                     {
-                        if (!string.IsNullOrWhiteSpace(entry))
-                        {
-                            recipeNames.Add(entry.Trim());
-                        }
+                        continue;
                     }
+
+                    AddRecipeNameStringsFromArray(fi.GetValue(learnRecipeAction) as string[], recipeNames);
+                }
+
+                foreach (var pi in t.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (pi.PropertyType != typeof(string[]) || !pi.CanRead || pi.GetIndexParameters().Length != 0)
+                    {
+                        continue;
+                    }
+
+                    AddRecipeNameStringsFromArray(pi.GetValue(learnRecipeAction, null) as string[], recipeNames);
                 }
             }
             catch
             {
                 // ignore
+            }
+        }
+
+        private static void AddRecipeNameStringsFromArrayMember(object instance, string memberName, HashSet<string> recipeNames)
+        {
+            try
+            {
+                var arr = GameReflection.GetMemberValue<string[]>(instance, memberName);
+                AddRecipeNameStringsFromArray(arr, recipeNames);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static void AddRecipeNameStringsFromArray(string[] arr, HashSet<string> recipeNames)
+        {
+            if (arr == null || recipeNames == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < arr.Length; i++)
+            {
+                var entry = arr[i];
+                if (!string.IsNullOrWhiteSpace(entry))
+                {
+                    recipeNames.Add(entry.Trim());
+                }
             }
         }
 
@@ -1491,18 +1999,750 @@ namespace AutoReadMod
             }
         }
 
-        private static string[] ResolveGainSkillProgressionNames(object gainSkillAction, ItemClass itemClass)
+        private sealed class SyntheticReadableEffects
+        {
+            internal static readonly SyntheticReadableEffects Empty = new SyntheticReadableEffects(
+                new string[0],
+                new string[0],
+                new string[0]);
+
+            internal SyntheticReadableEffects(
+                string[] addProgressionNames,
+                string[] maxProgressionNames,
+                string[] setCVarNames)
+            {
+                AddProgressionNames = addProgressionNames ?? new string[0];
+                MaxProgressionNames = maxProgressionNames ?? new string[0];
+                SetCVarNames = setCVarNames ?? new string[0];
+            }
+
+            internal string[] AddProgressionNames { get; }
+            internal string[] MaxProgressionNames { get; }
+            internal string[] SetCVarNames { get; }
+            internal bool HasAny =>
+                AddProgressionNames.Length > 0 || MaxProgressionNames.Length > 0 || SetCVarNames.Length > 0;
+        }
+
+        private static string[] ResolveGainSkillProgressionNames(
+            object gainSkillAction,
+            ItemClass itemClass,
+            SyntheticReadableEffects syntheticReadableEffects = null)
         {
             var names = new List<string>();
             AddProgressionNames(names, GetSkillsToGain(gainSkillAction));
 
             var craftingSkillGroup = GameReflection.GetMemberValue<string>(itemClass, "CraftingSkillGroup");
+            if (string.IsNullOrWhiteSpace(craftingSkillGroup))
+            {
+                craftingSkillGroup = GameReflection.GetMemberValue<string>(itemClass, "PropCraftingSkillGroup");
+            }
+
             if (!string.IsNullOrWhiteSpace(craftingSkillGroup))
             {
                 AddProgressionName(names, MapCraftingSkillGroupToProgressionName(craftingSkillGroup));
             }
 
+            if (syntheticReadableEffects != null)
+            {
+                AddProgressionNames(names, syntheticReadableEffects.AddProgressionNames);
+            }
+
             return names.ToArray();
+        }
+
+        private static bool IsSkillMagazineItemClass(ItemClass itemClass)
+        {
+            var itemClassName = GameReflection.GetItemClassName(itemClass);
+            return !string.IsNullOrWhiteSpace(itemClassName) &&
+                   itemClassName.EndsWith("SkillMagazine", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ApplySyntheticXmlReadableEffects(
+            EntityAlive entity,
+            SyntheticReadableEffects effects,
+            int consumedUnits,
+            string itemName,
+            int unitIndex,
+            string targetLabel,
+            Dictionary<string, int> addProgressionBaseLevels = null)
+        {
+            if (entity == null || effects == null || consumedUnits <= 0 || !effects.HasAny)
+            {
+                return;
+            }
+
+            for (var i = 0; i < effects.AddProgressionNames.Length; i++)
+            {
+                var skill = effects.AddProgressionNames[i];
+                var before = GetProgressionLevel(entity, skill);
+                var baseLevel = before;
+                if (addProgressionBaseLevels != null &&
+                    addProgressionBaseLevels.TryGetValue(skill, out var capturedBaseLevel))
+                {
+                    baseLevel = capturedBaseLevel;
+                }
+
+                var target = baseLevel + consumedUnits;
+                if (before >= target)
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: {skill} already satisfied at {before} (target {target}, base {baseLevel}) on {targetLabel}");
+                    continue;
+                }
+
+                var missingUnits = target - before;
+                var minEventOk = TryExecuteProgressionLevelMinEvent(
+                    entity,
+                    "MinEventActionAddProgressionLevel",
+                    skill,
+                    missingUnits);
+                var afterMinEvent = GetProgressionLevel(entity, skill);
+                if (minEventOk && afterMinEvent >= target)
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: min-event raised {skill} {before}->{afterMinEvent} on {targetLabel}");
+                }
+                else if (TrySetProgressionLevel(entity, skill, target))
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: raised {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel}");
+                }
+                else
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: failed raising {skill} from {before} on {targetLabel}");
+                }
+            }
+
+            for (var i = 0; i < effects.MaxProgressionNames.Length; i++)
+            {
+                var skill = effects.MaxProgressionNames[i];
+                var before = GetProgressionLevel(entity, skill);
+                var progressionValue = GetProgressionValue(entity, skill);
+                var max = TryGetProgressionMaxLevel(progressionValue, entity);
+                var target = max > 0 ? max : Math.Max(before, 1);
+                var minEventOk = TryExecuteProgressionLevelMinEvent(
+                    entity,
+                    "MinEventActionSetProgressionLevel",
+                    skill,
+                    -1);
+                var afterMinEvent = GetProgressionLevel(entity, skill);
+                if (minEventOk && afterMinEvent > before)
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: min-event set {skill} {before}->{afterMinEvent} on {targetLabel}");
+                }
+                else if (TrySetProgressionLevel(entity, skill, target))
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: set {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel}");
+                }
+                else
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: failed setting {skill} from {before} on {targetLabel}");
+                }
+            }
+
+            for (var i = 0; i < effects.SetCVarNames.Length; i++)
+            {
+                var cvar = effects.SetCVarNames[i];
+                if (TrySetEntityCVar(entity, cvar, 1f))
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: set cvar {cvar}=1 on {targetLabel}");
+                }
+                else
+                {
+                    LogHypothesis(
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: failed setting cvar {cvar}=1 on {targetLabel}");
+                }
+            }
+        }
+
+        private static void ApplyNerdOutfitMagazineBonusFromGameCVar(
+            EntityAlive entity,
+            string[] progressionNames,
+            int consumedUnits,
+            string itemName,
+            int unitIndex,
+            string targetLabel,
+            Dictionary<string, int> baseLevels)
+        {
+            if (entity == null || progressionNames == null || progressionNames.Length == 0 || consumedUnits <= 0)
+            {
+                return;
+            }
+
+            var chanceCVarName = "$nerdOutfitSkillPointChance";
+            if (!TryGetEntityCVar(entity, chanceCVarName, out var chancePercent) || chancePercent <= 0f)
+            {
+                chanceCVarName = "nerdOutfitSkillPointChance";
+                TryGetEntityCVar(entity, chanceCVarName, out chancePercent);
+            }
+
+            if (chancePercent <= 0f)
+            {
+                LogHypothesis($"NerdBonus [{unitIndex}] {itemName}: skipped on {targetLabel} ($nerdOutfitSkillPointChance/nerdOutfitSkillPointChance={chancePercent:0.###})");
+                return;
+            }
+
+            // The game owns outfit quality and other modifiers through this CVar; the mod only consumes the already-computed chance.
+            if (chancePercent <= 1f)
+            {
+                chancePercent *= 100f;
+            }
+
+            chancePercent = Math.Max(0f, Math.Min(100f, chancePercent));
+
+            for (var i = 0; i < progressionNames.Length; i++)
+            {
+                var skill = progressionNames[i];
+                if (string.IsNullOrWhiteSpace(skill))
+                {
+                    continue;
+                }
+
+                var before = GetProgressionLevel(entity, skill);
+                if (baseLevels != null &&
+                    baseLevels.TryGetValue(skill, out var baseLevel) &&
+                    before > baseLevel + consumedUnits)
+                {
+                    LogHypothesis(
+                        $"NerdBonus [{unitIndex}] {itemName}: skipped {skill} on {targetLabel}; game event already granted extra ({baseLevel}->{before})");
+                    continue;
+                }
+
+                double roll;
+                lock (NerdBonusRandom)
+                {
+                    roll = NerdBonusRandom.NextDouble() * 100.0;
+                }
+
+                if (roll > chancePercent)
+                {
+                    LogHypothesis(
+                        $"NerdBonus [{unitIndex}] {itemName}: missed {skill} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                    continue;
+                }
+
+                var minEventOk = TryExecuteProgressionLevelMinEvent(
+                    entity,
+                    "MinEventActionAddProgressionLevel",
+                    skill,
+                    1);
+                var after = GetProgressionLevel(entity, skill);
+                if (minEventOk && after > before)
+                {
+                    LogHypothesis(
+                        $"NerdBonus [{unitIndex}] {itemName}: granted {skill} {before}->{after} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                }
+                else if (TrySetProgressionLevel(entity, skill, before + 1))
+                {
+                    LogHypothesis(
+                        $"NerdBonus [{unitIndex}] {itemName}: fallback granted {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                }
+                else
+                {
+                    LogHypothesis(
+                        $"NerdBonus [{unitIndex}] {itemName}: failed grant {skill} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                }
+            }
+        }
+
+        private static bool TryExecuteProgressionLevelMinEvent(
+            EntityAlive entity,
+            string actionTypeName,
+            string progressionName,
+            int level)
+        {
+            if (entity == null || string.IsNullOrWhiteSpace(actionTypeName) || string.IsNullOrWhiteSpace(progressionName))
+            {
+                return false;
+            }
+
+            try
+            {
+                var actionType = FindLoadedType(actionTypeName);
+                if (actionType == null)
+                {
+                    return false;
+                }
+
+                var action = Activator.CreateInstance(actionType);
+                if (action == null)
+                {
+                    return false;
+                }
+
+                GameReflection.SetMemberValue(action, "progressionName", progressionName);
+                GameReflection.SetMemberValue(action, "<progressionName>k__BackingField", progressionName);
+                GameReflection.SetMemberValue(action, "level", level);
+                GameReflection.SetMemberValue(action, "<level>k__BackingField", level);
+                GameReflection.SetMemberValue(action, "showMessage", false);
+
+                var eventParams = GameReflection.CreateMinEventParams(entity, null, null);
+                return eventParams != null && GameReflection.TryInvokeInstanceMethod(action, "Execute", out var _, eventParams);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static Type FindLoadedType(string typeName)
+        {
+            if (string.IsNullOrWhiteSpace(typeName))
+            {
+                return null;
+            }
+
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (var i = 0; i < assemblies.Length; i++)
+            {
+                Type type = null;
+                try
+                {
+                    type = assemblies[i].GetType(typeName, false);
+                }
+                catch
+                {
+                    // ignore this assembly
+                }
+
+                if (type != null)
+                {
+                    return type;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TrySetEntityCVar(EntityAlive entity, string cvarName, float value)
+        {
+            if (entity == null || string.IsNullOrWhiteSpace(cvarName))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (GameReflection.TryInvokeInstanceMethod(entity, "SetCVar", out var _, cvarName, value))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            try
+            {
+                var buffManager = GameReflection.GetMemberValue<object>(entity, "Buffs")
+                                  ?? GameReflection.GetMemberValue<object>(entity, "buffs");
+                if (buffManager != null &&
+                    GameReflection.TryInvokeInstanceMethod(buffManager, "SetCustomVar", out var _, cvarName, value, true, null))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            return false;
+        }
+
+        private static bool TryGetEntityCVar(EntityAlive entity, string cvarName, out float value)
+        {
+            value = 0f;
+            if (entity == null || string.IsNullOrWhiteSpace(cvarName))
+            {
+                return false;
+            }
+
+            try
+            {
+                var result = GameReflection.InvokeMethod(entity, "GetCVar", cvarName);
+                if (TryConvertToFloat(result, out value))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            try
+            {
+                var buffManager = GameReflection.GetMemberValue<object>(entity, "Buffs")
+                                  ?? GameReflection.GetMemberValue<object>(entity, "buffs");
+                if (buffManager != null &&
+                    GameReflection.TryInvokeInstanceMethod(buffManager, "GetCustomVar", out var customVar, cvarName) &&
+                    TryConvertToFloat(customVar, out value))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            return false;
+        }
+
+        private static bool TryConvertToFloat(object value, out float result)
+        {
+            result = 0f;
+            if (value == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                result = Convert.ToSingle(value);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static SyntheticReadableEffects ResolveSyntheticReadableEffects(ItemClass itemClass)
+        {
+            var itemClassName = GameReflection.GetItemClassName(itemClass);
+            if (string.IsNullOrWhiteSpace(itemClassName))
+            {
+                return SyntheticReadableEffects.Empty;
+            }
+
+            var effectsByName = EnsureReadableEffectsCache();
+            if (effectsByName != null && effectsByName.TryGetValue(itemClassName, out var xmlEffects))
+            {
+                return xmlEffects;
+            }
+
+            // Fallback for tests, missing game XML, or modded items following vanilla naming conventions.
+            var addProgressions = new List<string>();
+            var maxProgressions = new List<string>();
+            var setCVars = new List<string>();
+            AddVanillaNameHeuristicEffects(itemClassName, addProgressions, maxProgressions, setCVars);
+            return new SyntheticReadableEffects(
+                UniqueStrings(addProgressions),
+                UniqueStrings(maxProgressions),
+                UniqueStrings(setCVars, normalizeToLower: false));
+        }
+
+        private static Dictionary<string, SyntheticReadableEffects> EnsureReadableEffectsCache()
+        {
+            if (_readableEffectsCacheLoaded)
+            {
+                return _cachedReadableEffectsByItemName;
+            }
+
+            _readableEffectsCacheLoaded = true;
+            _cachedReadableEffectsByItemName = new Dictionary<string, SyntheticReadableEffects>(StringComparer.OrdinalIgnoreCase);
+
+            var itemsXmlPath = FindGameItemsXmlPath();
+            if (string.IsNullOrEmpty(itemsXmlPath))
+            {
+                LogHypothesis("XmlSyntheticEffects: Data/Config/items.xml not found; using naming fallbacks only");
+                return _cachedReadableEffectsByItemName;
+            }
+
+            try
+            {
+                var doc = new XmlDocument();
+                doc.Load(itemsXmlPath);
+                var items = doc.SelectNodes("/items/item");
+                if (items == null)
+                {
+                    return _cachedReadableEffectsByItemName;
+                }
+
+                foreach (XmlElement item in items)
+                {
+                    var name = item.GetAttribute("name");
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+
+                    var addProgressions = new List<string>();
+                    var maxProgressions = new List<string>();
+                    var setCVars = new List<string>();
+                    AddXmlReadableEffects(item, addProgressions, maxProgressions, setCVars);
+                    AddVanillaNameHeuristicEffects(name, addProgressions, maxProgressions, setCVars);
+
+                    var effects = new SyntheticReadableEffects(
+                        UniqueStrings(addProgressions),
+                        UniqueStrings(maxProgressions),
+                        UniqueStrings(setCVars, normalizeToLower: false));
+                    if (effects.HasAny)
+                    {
+                        _cachedReadableEffectsByItemName[name.Trim()] = effects;
+                    }
+                }
+
+                LogHypothesis(
+                    $"XmlSyntheticEffects: loaded {_cachedReadableEffectsByItemName.Count} readable item effect rows from {itemsXmlPath}");
+            }
+            catch (Exception ex)
+            {
+                var root = UnwrapReflectionException(ex);
+                LogHypothesis(
+                    $"XmlSyntheticEffects: failed loading items.xml ({root.GetType().Name}: {root.Message}); using naming fallbacks only");
+            }
+
+            return _cachedReadableEffectsByItemName;
+        }
+
+        private static string FindGameItemsXmlPath()
+        {
+            var seenRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var candidates = new List<string>();
+            AddItemsXmlCandidate(candidates, seenRoots, Directory.GetCurrentDirectory());
+            AddItemsXmlCandidate(candidates, seenRoots, AppDomain.CurrentDomain.BaseDirectory);
+
+            try
+            {
+                var asmDir = Path.GetDirectoryName(typeof(AutoReader).Assembly.Location);
+                var dir = asmDir;
+                for (var i = 0; i < 8 && !string.IsNullOrEmpty(dir); i++)
+                {
+                    AddItemsXmlCandidate(candidates, seenRoots, dir);
+                    dir = Directory.GetParent(dir)?.FullName;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                if (File.Exists(candidates[i]))
+                {
+                    return candidates[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static void AddItemsXmlCandidate(List<string> candidates, HashSet<string> seenRoots, string root)
+        {
+            if (candidates == null || seenRoots == null || string.IsNullOrWhiteSpace(root))
+            {
+                return;
+            }
+
+            try
+            {
+                var fullRoot = Path.GetFullPath(root);
+                if (!seenRoots.Add(fullRoot))
+                {
+                    return;
+                }
+
+                candidates.Add(Path.Combine(fullRoot, "Data", "Config", "items.xml"));
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private static void AddXmlReadableEffects(
+            XmlElement item,
+            List<string> addProgressions,
+            List<string> maxProgressions,
+            List<string> setCVars)
+        {
+            foreach (XmlElement property in item.SelectNodes("property"))
+            {
+                var propertyName = property.GetAttribute("name");
+                if (!string.Equals(propertyName, "Unlocks", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var unlocks = property.GetAttribute("value") ?? string.Empty;
+                var parts = unlocks.Split(',');
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    var unlock = parts[i].Trim();
+                    if (unlock.StartsWith("crafting", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddProgressionName(addProgressions, unlock);
+                    }
+                    else if (unlock.StartsWith("perk", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddProgressionName(maxProgressions, unlock);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(unlock))
+                    {
+                        AddCVarName(setCVars, unlock);
+                    }
+                }
+            }
+
+            foreach (XmlElement effectGroup in item.SelectNodes("effect_group"))
+            {
+                if (HasChildElement(effectGroup))
+                {
+                    // Requirement groups make the effect conditional (e.g. Nerd Outfit bonus rolls). Keep
+                    // synthetic learning to the unconditional read effects only.
+                    continue;
+                }
+
+                foreach (XmlElement effect in effectGroup.SelectNodes("triggered_effect"))
+                {
+                    var trigger = effect.GetAttribute("trigger");
+                    if (!string.Equals(trigger, "onSelfPrimaryActionEnd", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var action = effect.GetAttribute("action");
+                    if (string.Equals(action, "AddProgressionLevel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddProgressionName(addProgressions, effect.GetAttribute("progression_name"));
+                    }
+                    else if (string.Equals(action, "SetProgressionLevel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddProgressionName(maxProgressions, effect.GetAttribute("progression_name"));
+                    }
+                    else if (string.Equals(action, "ModifyCVar", StringComparison.OrdinalIgnoreCase) &&
+                             string.Equals(effect.GetAttribute("operation"), "set", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var value = effect.GetAttribute("value") ?? string.Empty;
+                        if (value.Trim() == "1")
+                        {
+                            AddCVarName(setCVars, effect.GetAttribute("cvar"));
+                        }
+                    }
+                }
+            }
+        }
+
+        private static bool HasChildElement(XmlElement element)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < element.ChildNodes.Count; i++)
+            {
+                if (element.ChildNodes[i] is XmlElement)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void AddVanillaNameHeuristicEffects(
+            string itemClassName,
+            List<string> addProgressions,
+            List<string> maxProgressions,
+            List<string> setCVars)
+        {
+            if (string.IsNullOrWhiteSpace(itemClassName))
+            {
+                return;
+            }
+
+            var progression = MapVanillaSkillMagazineToProgressionName(itemClassName);
+            if (!string.IsNullOrWhiteSpace(progression))
+            {
+                AddProgressionName(addProgressions, progression);
+                return;
+            }
+
+            var lower = itemClassName.Trim().ToLowerInvariant();
+            if (lower.EndsWith("schematic", StringComparison.OrdinalIgnoreCase) && itemClassName.Length > "schematic".Length)
+            {
+                AddCVarName(setCVars, itemClassName.Substring(0, itemClassName.Length - "schematic".Length));
+            }
+            else if (lower.EndsWith("recipe", StringComparison.OrdinalIgnoreCase) && itemClassName.Length > "recipe".Length)
+            {
+                AddCVarName(setCVars, itemClassName.Substring(0, itemClassName.Length - "recipe".Length));
+            }
+        }
+
+        private static string MapVanillaSkillMagazineToProgressionName(string itemClassName)
+        {
+            if (string.IsNullOrWhiteSpace(itemClassName) ||
+                !itemClassName.EndsWith("SkillMagazine", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var prefix = itemClassName.Substring(0, itemClassName.Length - "SkillMagazine".Length);
+            switch (prefix)
+            {
+                case "harvestingTools": return "craftingHarvestingTools";
+                case "repairTools": return "craftingRepairTools";
+                case "salvageTools": return "craftingSalvageTools";
+                case "knuckles": return "craftingKnuckles";
+                case "blades": return "craftingBlades";
+                case "clubs": return "craftingClubs";
+                case "sledgehammers": return "craftingSledgehammers";
+                case "spears": return "craftingSpears";
+                case "bows": return "craftingBows";
+                case "handguns": return "craftingHandguns";
+                case "shotguns": return "craftingShotguns";
+                case "rifles": return "craftingRifles";
+                case "machineGuns": return "craftingMachineGuns";
+                case "explosives": return "craftingExplosives";
+                case "robotics": return "craftingRobotics";
+                case "armor": return "craftingArmor";
+                case "medical": return "craftingMedical";
+                case "food": return "craftingFood";
+                case "seed": return "craftingSeeds";
+                case "electrician": return "craftingElectrician";
+                case "traps": return "craftingTraps";
+                case "workstation": return "craftingWorkstations";
+                case "vehicles": return "craftingVehicles";
+                default: return null;
+            }
+        }
+
+        private static string[] UniqueStrings(List<string> values, bool normalizeToLower = true)
+        {
+            if (values == null || values.Count == 0)
+            {
+                return new string[0];
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<string>();
+            for (var i = 0; i < values.Count; i++)
+            {
+                var value = values[i];
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                var normalized = normalizeToLower ? value.Trim().ToLowerInvariant() : value.Trim();
+                if (seen.Add(normalized))
+                {
+                    result.Add(normalized);
+                }
+            }
+
+            return result.ToArray();
         }
 
         private static string[] GetSkillsToGain(object gainSkillAction)
@@ -1549,6 +2789,25 @@ namespace AutoReadMod
             {
                 names.Add(normalized);
             }
+        }
+
+        private static void AddCVarName(List<string> names, string candidate)
+        {
+            if (names == null || string.IsNullOrWhiteSpace(candidate))
+            {
+                return;
+            }
+
+            var normalized = candidate.Trim();
+            for (var i = 0; i < names.Count; i++)
+            {
+                if (string.Equals(names[i], normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            names.Add(normalized);
         }
 
         private static string MapCraftingSkillGroupToProgressionName(string craftingSkillGroup)

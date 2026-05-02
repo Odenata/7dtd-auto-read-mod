@@ -12,6 +12,7 @@ namespace AutoReadMod
             
             var config = ModConfig.Instance;
             SafeLog($"Config: Enabled={config.Enabled}, DebugMode={config.DebugMode}");
+            AutoReader.EmitDebugFileLocation();
 
             try
             {

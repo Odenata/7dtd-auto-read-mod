@@ -294,6 +294,41 @@ namespace AutoReadMod.Tests
         }
 
         [Fact]
+        public void ApplyReadableEffects_WithSlotController_DoesNotManuallyFireItemEvents()
+        {
+            var originalGm = GameManager.Instance;
+            var originalDiagnosticLine = GameReflection.DiagnosticLine;
+            try
+            {
+                GameManager.Instance = new GameManager();
+                var logs = new System.Collections.Generic.List<string>();
+                GameReflection.DiagnosticLine = msg => logs.Add(msg);
+
+                var stack = CreateStack("magazineRepair", 2, new ItemActionEat());
+                stack.itemValue.ItemClass.CraftingSkillGroup = "RepairTools";
+                var player = new EntityPlayer { EntityName = "p", inventory = new Inventory() };
+                var controller = new XUiC_ItemStack { ItemStack = stack };
+
+                int n = AutoReader.ApplyReadableEffectsForTest(
+                    player,
+                    stack,
+                    2,
+                    itemSlotIndex: 0,
+                    lootSlotController: controller);
+
+                Assert.Equal(2, n);
+                Assert.Contains(logs, line => line.Contains("skipped manual FireStart; vanilla ExecuteInstantAction owns item events"));
+                Assert.Contains(logs, line => line.Contains("skipped manual FireEnd; vanilla ExecuteInstantAction owns item events"));
+                Assert.DoesNotContain(logs, line => line.Contains("TryFireOnSelfPrimaryActionEnd") && line.Contains("after vanilla read path"));
+            }
+            finally
+            {
+                GameManager.Instance = originalGm;
+                GameReflection.DiagnosticLine = originalDiagnosticLine;
+            }
+        }
+
+        [Fact]
         public void ApplyReadableEffects_WhenLocalEntityDiffers_UpdatesContextPlayerProgressionToo()
         {
             var originalGm = GameManager.Instance;

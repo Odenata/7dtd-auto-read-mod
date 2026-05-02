@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
 
@@ -7,6 +9,19 @@ namespace AutoReadMod
     internal static class GameReflection
     {
         private static PropertyInfo _xUiItemStackItemStackProperty;
+
+        /// <summary>Successful <see cref="TryResolveCraftingManager"/> result for the rest of the session (main thread).</summary>
+        private static object _cachedCraftingManagerForSession;
+        private static readonly object LootDebugFileLock = new object();
+        private static string _lootDebugFilePath;
+
+        private sealed class ReferenceIdentityEqualityComparer : IEqualityComparer<object>
+        {
+            bool IEqualityComparer<object>.Equals(object x, object y) => ReferenceEquals(x, y);
+
+            int IEqualityComparer<object>.GetHashCode(object obj) =>
+                System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+        }
 
         internal static EntityPlayer GetPlayerFromLootWindowGroup(XUiC_LootWindowGroup lootWindowGroup)
         {
@@ -669,6 +684,214 @@ namespace AutoReadMod
             return GetMemberValue<Inventory>(entity, "inventory");
         }
 
+        /// <summary>
+        /// True when <paramref name="candidate"/> is the same object reference as an item stack slot on the player.
+        /// Used to refuse loot auto-read if the engine accidentally aliases a chest slot with inventory (would corrupt hotbar).
+        /// </summary>
+        internal static bool ItemStackAliasesPlayerInventoryOrBag(EntityPlayer player, ItemStack candidate)
+        {
+            if (player == null || candidate == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var inv = GetInventory(player);
+                if (inv != null)
+                {
+                    var slots = InvokeMethod(inv, "GetSlots") as ItemStack[];
+                    if (slots != null)
+                    {
+                        for (var i = 0; i < slots.Length; i++)
+                        {
+                            if (ReferenceEquals(candidate, slots[i]))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                var bagSlots = GetBagSlots(GetBag(player));
+                if (bagSlots != null)
+                {
+                    for (var i = 0; i < bagSlots.Length; i++)
+                    {
+                        if (ReferenceEquals(candidate, bagSlots[i]))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // stub / reflection variance
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Compact read-only state dump for in-game loot debugging. It avoids game writes and tolerates
+        /// runtime API drift by using reflection for optional inventory / UI fields.
+        /// </summary>
+        internal static string FormatLootReadSnapshot(EntityPlayer player, ItemStack lootBacking, XUiC_ItemStack uiController = null)
+        {
+            try
+            {
+                var inv0 = TryGetInventorySlotStack(player, 0);
+                var aliases = DescribePlayerStackAliases(player, lootBacking);
+                var ui = DescribeItemStackController(uiController);
+                return $"loot={DescribeItemStack(lootBacking)} | inv0={DescribeItemStack(inv0)} | aliases={aliases} | ui={ui}";
+            }
+            catch (Exception ex)
+            {
+                return $"snapshot-error={ex.GetType().Name}:{ex.Message}";
+            }
+        }
+
+        private static string DescribePlayerStackAliases(EntityPlayer player, ItemStack candidate)
+        {
+            if (player == null || candidate == null)
+            {
+                return "none";
+            }
+
+            var hits = new List<string>();
+            try
+            {
+                var inv = GetInventory(player);
+                var invSlots = TryGetInventoryLikeSlots(inv);
+                if (invSlots != null)
+                {
+                    for (var i = 0; i < invSlots.Length; i++)
+                    {
+                        if (ReferenceEquals(candidate, ExtractItemStackFromInventorySlot(invSlots.GetValue(i))))
+                        {
+                            hits.Add("inv[" + i + "]");
+                        }
+                    }
+                }
+
+                var bagSlots = GetBagSlots(GetBag(player));
+                if (bagSlots != null)
+                {
+                    for (var i = 0; i < bagSlots.Length; i++)
+                    {
+                        if (ReferenceEquals(candidate, bagSlots[i]))
+                        {
+                            hits.Add("bag[" + i + "]");
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                hits.Add("alias-scan-error");
+            }
+
+            return hits.Count == 0 ? "none" : string.Join(",", hits.ToArray());
+        }
+
+        private static ItemStack TryGetInventorySlotStack(EntityPlayer player, int slotIndex)
+        {
+            if (player == null || slotIndex < 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                var inv = GetInventory(player);
+                if (inv == null)
+                {
+                    return null;
+                }
+
+                var direct = InvokeMethod(inv, "GetItemStack", slotIndex) as ItemStack;
+                if (direct != null)
+                {
+                    return direct;
+                }
+
+                var slots = TryGetInventoryLikeSlots(inv);
+                if (slots == null || slotIndex >= slots.Length)
+                {
+                    return null;
+                }
+
+                return ExtractItemStackFromInventorySlot(slots.GetValue(slotIndex));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static System.Array TryGetInventoryLikeSlots(object inventory)
+        {
+            if (inventory == null)
+            {
+                return null;
+            }
+
+            var slots = InvokeMethod(inventory, "GetSlots") as System.Array;
+            if (slots != null)
+            {
+                return slots;
+            }
+
+            return GetMemberValue<object>(inventory, "slots") as System.Array;
+        }
+
+        private static ItemStack ExtractItemStackFromInventorySlot(object slot)
+        {
+            if (slot == null)
+            {
+                return null;
+            }
+
+            if (slot is ItemStack stack)
+            {
+                return stack;
+            }
+
+            return GetMemberValue<ItemStack>(slot, "itemStack")
+                ?? GetMemberValue<ItemStack>(slot, "ItemStack");
+        }
+
+        private static string DescribeItemStack(ItemStack stack)
+        {
+            if (stack == null)
+            {
+                return "null";
+            }
+
+            var itemValue = GetItemValue(stack);
+            var itemClass = GetItemClass(itemValue);
+            var name = GetItemClassName(itemClass);
+            var type = GetItemType(itemValue);
+            var count = GetItemCount(stack);
+            var hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(stack);
+            return $"{name}(type={type},count={count},ref={hash})";
+        }
+
+        private static string DescribeItemStackController(XUiC_ItemStack controller)
+        {
+            if (controller == null)
+            {
+                return "null";
+            }
+
+            var slotNumber = GetMemberValue<object>(controller, "SlotNumber") ?? "?";
+            var stackLocation = GetMemberValue<object>(controller, "StackLocation") ?? "?";
+            var stack = TryGetItemStackFromLootSlotController(controller);
+            var hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(controller);
+            return $"ctrl(ref={hash},slot={slotNumber},loc={stackLocation},stack={DescribeItemStack(stack)})";
+        }
+
         internal static Bag GetBag(EntityAlive entity)
         {
             return GetMemberValue<Bag>(entity, "bag");
@@ -1122,6 +1345,8 @@ namespace AutoReadMod
                 return;
             }
 
+            AppendLootDebugLine(message);
+
             try
             {
                 DiagnosticLine?.Invoke(message);
@@ -1129,6 +1354,65 @@ namespace AutoReadMod
             catch
             {
                 // Never break read path
+            }
+        }
+
+        private static void AppendLootDebugLine(string message)
+        {
+            try
+            {
+                var path = GetLootDebugFilePath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    return;
+                }
+
+                lock (LootDebugFileLock)
+                {
+                    File.AppendAllText(
+                        path,
+                        DateTime.Now.ToString("o") + " " + message + Environment.NewLine);
+                }
+            }
+            catch
+            {
+                // Diagnostics must never affect gameplay.
+            }
+        }
+
+        internal static string GetLootDebugFilePath()
+        {
+            if (!string.IsNullOrEmpty(_lootDebugFilePath))
+            {
+                return _lootDebugFilePath;
+            }
+
+            try
+            {
+                var userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+                if (!string.IsNullOrEmpty(userProfile))
+                {
+                    var dir = Path.Combine(userProfile, "AppData", "LocalLow", "The Fun Pimps", "7 Days To Die");
+                    Directory.CreateDirectory(dir);
+                    _lootDebugFilePath = Path.Combine(dir, "AutoReadMod_loot_debug.log");
+                    return _lootDebugFilePath;
+                }
+            }
+            catch
+            {
+                // fall through to temp
+            }
+
+            try
+            {
+                var dir = Path.Combine(Path.GetTempPath(), "The Fun Pimps", "7 Days To Die");
+                Directory.CreateDirectory(dir);
+                _lootDebugFilePath = Path.Combine(dir, "AutoReadMod_loot_debug.log");
+                return _lootDebugFilePath;
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -1169,6 +1453,7 @@ namespace AutoReadMod
             }
 
             SetMemberValue(eventParams, "Self", self);
+            SetMemberValue(eventParams, "Instigator", self);
             SetMemberValue(eventParams, "ItemValue", itemValue);
             SetMemberValue(eventParams, "ItemInventoryData", itemInventoryData);
             // Client-only progression from items.xml (e.g. AddProgressionLevel on onSelfPrimaryActionEnd) often skips when false.
@@ -1368,6 +1653,671 @@ namespace AutoReadMod
             }
 
             return default(T);
+        }
+
+        /// <summary>
+        /// Resolves the runtime <c>CraftingManager</c> across 7DTD builds: named fields differ, and many versions expose a static <c>Instance</c>.
+        /// </summary>
+        internal static object TryResolveCraftingManager(object gameManager, EntityPlayer player)
+        {
+            if (_cachedCraftingManagerForSession != null &&
+                HasUnlockRecipeStringEntityPlayerMethod(_cachedCraftingManagerForSession))
+            {
+                return _cachedCraftingManagerForSession;
+            }
+
+            var namedGm = TryCraftingManagerFromNamedMemberHosts(gameManager);
+            if (namedGm != null)
+            {
+                return CacheAndReturnCraftingManager(namedGm);
+            }
+
+            var world = GetMemberValue<object>(gameManager, "m_World")
+                ?? GetMemberValue<object>(gameManager, "World");
+            var namedWorld = TryCraftingManagerFromNamedMemberHosts(world);
+            if (namedWorld != null)
+            {
+                return CacheAndReturnCraftingManager(namedWorld);
+            }
+
+            var singleton = TryGetCraftingManagerStaticSingleton(gameManager);
+            if (singleton != null)
+            {
+                return CacheAndReturnCraftingManager(singleton);
+            }
+
+            var scanGm = TryFindCraftingManagerByMemberTypeScan(gameManager);
+            if (scanGm != null)
+            {
+                return CacheAndReturnCraftingManager(scanGm);
+            }
+
+            var scanWorld = TryFindCraftingManagerByMemberTypeScan(world);
+            if (scanWorld != null)
+            {
+                return CacheAndReturnCraftingManager(scanWorld);
+            }
+
+            if (player != null)
+            {
+                var scanPlayer = TryFindCraftingManagerByMemberTypeScan(player);
+                if (scanPlayer != null)
+                {
+                    return CacheAndReturnCraftingManager(scanPlayer);
+                }
+            }
+
+            EntityPlayer localPlayer = player;
+            if (localPlayer == null || localPlayer.GetType().Name != "EntityPlayerLocal")
+            {
+                localPlayer = GetMemberValue<EntityPlayer>(gameManager, "myEntityPlayerLocal");
+            }
+
+            if (localPlayer != null && localPlayer.GetType().Name == "EntityPlayerLocal")
+            {
+                var playerUi = GetMemberValue<object>(localPlayer, "playerUI") ?? GetMemberValue<object>(localPlayer, "PlayerUI");
+                if (playerUi != null)
+                {
+                    var xui = GetMemberValue<object>(playerUi, "xui")
+                        ?? GetMemberValue<object>(playerUi, "mXUi")
+                        ?? GetMemberValue<object>(playerUi, "Xui");
+                    var scanXui = TryFindCraftingManagerByMemberTypeScan(xui);
+                    if (scanXui != null)
+                    {
+                        return CacheAndReturnCraftingManager(scanXui);
+                    }
+                }
+            }
+
+            var bfs = TryFindCraftingManagerByUnlockRecipeBfs(gameManager, world, player);
+            if (bfs != null)
+            {
+                return CacheAndReturnCraftingManager(bfs);
+            }
+
+            return null;
+        }
+
+        private static object CacheAndReturnCraftingManager(object resolved)
+        {
+            if (resolved != null)
+            {
+                _cachedCraftingManagerForSession = resolved;
+            }
+
+            return resolved;
+        }
+
+        private static object TryCraftingManagerFromNamedMemberHosts(object host)
+        {
+            if (host == null)
+            {
+                return null;
+            }
+
+            foreach (var key in new[] { "craftingManager", "CraftingManager", "mCraftingManager" })
+            {
+                var cm = GetMemberValue<object>(host, key);
+                if (IsCraftingManagerLikeObject(cm))
+                {
+                    return cm;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsCraftingManagerInstance(object cm)
+        {
+            if (cm == null)
+            {
+                return false;
+            }
+
+            for (var t = cm.GetType(); t != null; t = t.BaseType)
+            {
+                if (t.Name == "CraftingManager")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Some builds rename or wrap the manager; accept any instance that exposes vanilla-style recipe unlock.</summary>
+        private static bool IsCraftingManagerLikeObject(object v)
+        {
+            return IsCraftingManagerInstance(v) || HasUnlockRecipeStringEntityPlayerMethod(v);
+        }
+
+        private static bool HasUnlockRecipeStringEntityPlayerMethod(object instance)
+        {
+            if (instance == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                foreach (var m in instance.GetType().GetMethods(
+                             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    if (m.Name != "UnlockRecipe" || m.IsGenericMethodDefinition)
+                    {
+                        continue;
+                    }
+
+                    var ps = m.GetParameters();
+                    if (ps.Length != 2 || ps[0].ParameterType != typeof(string))
+                    {
+                        continue;
+                    }
+
+                    var p1 = ps[1].ParameterType;
+                    if (p1.IsAssignableFrom(typeof(EntityPlayer)))
+                    {
+                        return true;
+                    }
+
+                    if (p1.Name == "EntityPlayerLocal")
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return false;
+        }
+
+        private static object TryGetCraftingManagerStaticSingleton(object gameManager)
+        {
+            try
+            {
+                var cmType = TryFindCraftingManagerRuntimeType(gameManager);
+                if (cmType == null)
+                {
+                    return null;
+                }
+
+                return TryExtractCraftingManagerSingleton(cmType);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static System.Type TryFindCraftingManagerRuntimeType(object gameManager)
+        {
+            System.Type t = null;
+            try
+            {
+                t = typeof(EntityPlayer).Assembly.GetType("CraftingManager", false, false);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            if (t != null)
+            {
+                return t;
+            }
+
+            if (gameManager != null)
+            {
+                try
+                {
+                    t = gameManager.GetType().Assembly.GetType("CraftingManager", false, false);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            if (t != null)
+            {
+                return t;
+            }
+
+            return TryFindCraftingManagerTypeInAssemblyCSharp();
+        }
+
+        private static System.Type TryFindCraftingManagerTypeInAssemblyCSharp()
+        {
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (asm.IsDynamic)
+                {
+                    continue;
+                }
+
+                var asmName = asm.GetName().Name;
+                if (!string.Equals(asmName, "Assembly-CSharp", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var t = asm.GetType("CraftingManager", false, false);
+                    if (t != null)
+                    {
+                        return t;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                System.Type[] types;
+                try
+                {
+                    types = asm.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    if (ex.Types == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var t in ex.Types)
+                    {
+                        if (t != null && t.Name == "CraftingManager")
+                        {
+                            return t;
+                        }
+                    }
+
+                    continue;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < types.Length; i++)
+                {
+                    var t = types[i];
+                    if (t != null && t.Name == "CraftingManager")
+                    {
+                        return t;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static object TryExtractCraftingManagerSingleton(System.Type cmType)
+        {
+            if (cmType == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                const BindingFlags bf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+
+                foreach (var p in cmType.GetProperties(bf))
+                {
+                    if (!cmType.IsAssignableFrom(p.PropertyType))
+                    {
+                        continue;
+                    }
+
+                    if (p.Name != "Instance" && p.Name != "instance")
+                    {
+                        continue;
+                    }
+
+                    var v = p.GetValue(null, null);
+                    if (v != null)
+                    {
+                        return v;
+                    }
+                }
+
+                foreach (var f in cmType.GetFields(bf))
+                {
+                    if (!cmType.IsAssignableFrom(f.FieldType))
+                    {
+                        continue;
+                    }
+
+                    if (f.Name != "Instance" && f.Name != "instance" && f.Name != "m_Instance" && f.Name != "singleton")
+                    {
+                        continue;
+                    }
+
+                    var v = f.GetValue(null);
+                    if (v != null)
+                    {
+                        return v;
+                    }
+                }
+
+                foreach (var p in cmType.GetProperties(bf))
+                {
+                    if (!cmType.IsAssignableFrom(p.PropertyType))
+                    {
+                        continue;
+                    }
+
+                    var v = p.GetValue(null, null);
+                    if (v != null)
+                    {
+                        return v;
+                    }
+                }
+
+                foreach (var f in cmType.GetFields(bf))
+                {
+                    if (!cmType.IsAssignableFrom(f.FieldType))
+                    {
+                        continue;
+                    }
+
+                    var v = f.GetValue(null);
+                    if (v != null)
+                    {
+                        return v;
+                    }
+                }
+            }
+            catch
+            {
+                // Reflection failures ignored
+            }
+
+            return null;
+        }
+
+        private static object TryFindCraftingManagerByUnlockRecipeBfs(object gameManager, object world, EntityPlayer player)
+        {
+            var seen = new HashSet<object>(new ReferenceIdentityEqualityComparer());
+            var queue = new Queue<(object o, int d)>();
+
+            void TryEnqueue(object o, int depth)
+            {
+                if (o == null || depth > 2)
+                {
+                    return;
+                }
+
+                if (!seen.Add(o))
+                {
+                    return;
+                }
+
+                queue.Enqueue((o, depth));
+            }
+
+            TryEnqueue(gameManager, 0);
+            TryEnqueue(world, 0);
+            TryEnqueue(player, 0);
+
+            var visits = 0;
+            while (queue.Count > 0 && visits++ < 400)
+            {
+                var (o, d) = queue.Dequeue();
+                if (HasUnlockRecipeStringEntityPlayerMethod(o))
+                {
+                    return o;
+                }
+
+                if (d >= 2)
+                {
+                    continue;
+                }
+
+                AddReflectionChildrenForCraftingManagerSearch(o, d + 1, seen, queue);
+            }
+
+            return null;
+        }
+
+        private static void AddReflectionChildrenForCraftingManagerSearch(
+            object host,
+            int nextDepth,
+            HashSet<object> seen,
+            Queue<(object o, int d)> queue)
+        {
+            if (host == null)
+            {
+                return;
+            }
+
+            var hostType = host.GetType();
+            if (hostType.IsPrimitive || hostType == typeof(string))
+            {
+                return;
+            }
+
+            if (hostType.FullName != null &&
+                hostType.FullName.StartsWith("UnityEngine.", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            var isHeavyWorld = hostType.Name == "World" || hostType.Name == "WorldBase";
+            var n = 0;
+            foreach (var f in hostType.GetFields(flags))
+            {
+                if (++n > (isHeavyWorld ? 55 : 130))
+                {
+                    break;
+                }
+
+                var ft = f.FieldType;
+                if (ft.IsPrimitive || ft == typeof(string) || ft.IsEnum)
+                {
+                    continue;
+                }
+
+                if (ft.FullName != null && ft.FullName.StartsWith("UnityEngine.", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                object v;
+                try
+                {
+                    v = f.GetValue(host);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (v == null)
+                {
+                    continue;
+                }
+
+                if (ft.IsArray)
+                {
+                    var el = ft.GetElementType();
+                    if (el == null || el.IsPrimitive || el == typeof(string))
+                    {
+                        continue;
+                    }
+
+                    var arr = v as Array;
+                    if (arr == null)
+                    {
+                        continue;
+                    }
+
+                    // MD arrays (e.g. World coll caches) throw from GetValue(int); skip — not hosting CraftingManager.
+                    if (arr.Rank != 1)
+                    {
+                        continue;
+                    }
+
+                    var limit = System.Math.Min(arr.Length, 6);
+                    for (var i = 0; i < limit; i++)
+                    {
+                        object arrayElement;
+                        try
+                        {
+                            arrayElement = arr.GetValue(i);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        TryEnqueueCraftingSearchChild(arrayElement, nextDepth, seen, queue);
+                    }
+
+                    continue;
+                }
+
+                if (!ft.IsClass)
+                {
+                    continue;
+                }
+
+                if (isHeavyWorld)
+                {
+                    var fn = f.Name;
+                    var tname = ft.Name;
+                    if (fn.IndexOf("craft", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        fn.IndexOf("Recipe", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        tname.IndexOf("Craft", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        tname.IndexOf("Recipe", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        !tname.EndsWith("Manager", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                }
+
+                TryEnqueueCraftingSearchChild(v, nextDepth, seen, queue);
+            }
+        }
+
+        private static void TryEnqueueCraftingSearchChild(
+            object child,
+            int nextDepth,
+            HashSet<object> seen,
+            Queue<(object o, int d)> queue)
+        {
+            if (child == null)
+            {
+                return;
+            }
+
+            var t = child.GetType();
+            if (t.IsPrimitive || t == typeof(string))
+            {
+                return;
+            }
+
+            if (t.FullName != null && t.FullName.StartsWith("UnityEngine.", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (!seen.Add(child))
+            {
+                return;
+            }
+
+            queue.Enqueue((child, nextDepth));
+        }
+
+        private static object TryFindCraftingManagerByMemberTypeScan(object host)
+        {
+            if (host == null)
+            {
+                return null;
+            }
+
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            try
+            {
+                for (var t = host.GetType(); t != null; t = t.BaseType)
+                {
+                    foreach (var f in t.GetFields(flags))
+                    {
+                        if (!LooksLikeCraftingManagerReferenceType(f.FieldType))
+                        {
+                            continue;
+                        }
+
+                        object v;
+                        try
+                        {
+                            v = f.GetValue(host);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        if (IsCraftingManagerLikeObject(v))
+                        {
+                            return v;
+                        }
+                    }
+
+                    foreach (var p in t.GetProperties(flags))
+                    {
+                        if (!p.CanRead || p.GetIndexParameters().Length != 0)
+                        {
+                            continue;
+                        }
+
+                        if (!LooksLikeCraftingManagerReferenceType(p.PropertyType))
+                        {
+                            continue;
+                        }
+
+                        object v;
+                        try
+                        {
+                            v = p.GetValue(host, null);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        if (IsCraftingManagerLikeObject(v))
+                        {
+                            return v;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+
+        private static bool LooksLikeCraftingManagerReferenceType(System.Type memberType)
+        {
+            if (memberType == null || !memberType.IsClass)
+            {
+                return false;
+            }
+
+            var n = memberType.Name;
+            return n == "CraftingManager" || n.IndexOf("CraftingManager", StringComparison.Ordinal) >= 0;
         }
     }
 }
