@@ -362,11 +362,7 @@ namespace AutoReadMod
                         $"ReadStack: bundleSlotController={(lootSlotController == null ? "null" : lootSlotController.GetType().Name)} bag={bundleReadFromBag} slot={itemSlotIndex}");
                 }
 
-                // Loot grid indices are not player inventory indices. Passing them as ItemInventoryData.slotIdx
-                // wires eat/min-event state onto the wrong toolbelt slots and causes repeated InvalidCastException
-                // in ItemActionEat.OnHoldingUpdate / IsActionRunning (see client logs).
-                var slotIdxForItemActions = lootWindowGroup != null ? -1 : itemSlotIndex;
-                var successfulConsumes = ApplyReadableEffects(player, itemStack, targetCount, slotIdxForItemActions, lootSlotController);
+                var successfulConsumes = ApplyReadableEffects(player, itemStack, targetCount, itemSlotIndex, lootSlotController);
                 DebugLog($"Consumed {successfulConsumes}/{targetCount}x {itemName}, now updating slot");
 
                 if (successfulConsumes <= 0)
@@ -447,7 +443,7 @@ namespace AutoReadMod
                 return 0;
             }
 
-            // Match concrete vanilla eat action only (see 09b86f5). ItemActionGainSkill is separate — magazines often use Eat + GainSkill.
+            // Match concrete vanilla eat action only (see 09b86f5). ItemActionGainSkill / ItemActionLearnRecipe are separate.
             object eatAction = null;
             var eatActionIndex = -1;
             for (var ai = 0; ai < itemActions.Length; ai++)
@@ -474,7 +470,20 @@ namespace AutoReadMod
                 }
             }
 
-            if (eatAction == null && gainSkillAction == null)
+            object learnRecipeAction = null;
+            var learnRecipeActionIndex = -1;
+            for (var ai = 0; ai < itemActions.Length; ai++)
+            {
+                var action = itemActions.GetValue(ai);
+                if (action != null && action.GetType().Name == "ItemActionLearnRecipe")
+                {
+                    learnRecipeAction = action;
+                    learnRecipeActionIndex = ai;
+                    break;
+                }
+            }
+
+            if (eatAction == null && gainSkillAction == null && learnRecipeAction == null)
             {
                 var actionDiag = new System.Text.StringBuilder();
                 for (var ai = 0; ai < itemActions.Length; ai++)
@@ -488,7 +497,7 @@ namespace AutoReadMod
                     actionDiag.Append(a?.GetType().FullName ?? "null");
                 }
 
-                SafeLog($"No ItemActionEat or ItemActionGainSkill for {itemName}. Actions[]={actionDiag}");
+                SafeLog($"No ItemActionEat, ItemActionGainSkill, or ItemActionLearnRecipe for {itemName}. Actions[]={actionDiag}");
                 return 0;
             }
 
@@ -499,12 +508,7 @@ namespace AutoReadMod
             }
 
             LogHypothesis(
-                $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} | eatAction={(eatAction == null ? "null" : eatAction.GetType().FullName)} | gainSkillAction={(gainSkillAction == null ? "null" : gainSkillAction.GetType().FullName)} | slotIdx={itemSlotIndex} eatIdx={eatActionIndex} gainSkillIdx={gainSkillActionIndex}");
-            if (itemSlotIndex < 0)
-            {
-                LogHypothesis(
-                    "ApplyReadableEffects: WARNING slotIdx=-1 — many builds skip perk/recipe unlock logic when ItemInventoryData.slotIdx is not a real inventory/container slot.");
-            }
+                $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} | eatAction={(eatAction == null ? "null" : eatAction.GetType().FullName)} | gainSkillAction={(gainSkillAction == null ? "null" : gainSkillAction.GetType().FullName)} | learnRecipe={(learnRecipeAction == null ? "null" : learnRecipeAction.GetType().FullName)} | slotIdx={itemSlotIndex} eatIdx={eatActionIndex} gainSkillIdx={gainSkillActionIndex} learnIdx={learnRecipeActionIndex}");
 
             var gameManager = (object)GameReflection.GetGameManagerInstance();
             LogHypothesis(
@@ -518,8 +522,25 @@ namespace AutoReadMod
                 return 0;
             }
 
+            // Open loot: never pass loot grid indices as player inventory slotIdx (toolbelt corruption + cast spam).
+            // Use -1 for consume/GainSkill/LearnRecipe ItemInventoryData; run ItemActionLearnRecipe after Eat succeeds.
+            var readingFromOpenLoot = lootSlotController != null;
+            var slotForConsumeAndSkills = readingFromOpenLoot ? -1 : itemSlotIndex;
+            var slotForMinEvents = readingFromOpenLoot ? -1 : itemSlotIndex;
+            if (slotForConsumeAndSkills < 0 && !readingFromOpenLoot)
+            {
+                LogHypothesis(
+                    "ApplyReadableEffects: WARNING slotIdx=-1 — many builds skip perk/recipe unlock logic when ItemInventoryData.slotIdx is not a real inventory/container slot.");
+            }
+
+            if (readingFromOpenLoot)
+            {
+                LogHypothesis(
+                    $"ApplyReadableEffects: open loot — consume/skill/learn use slotIdx=-1; min-events slotIdx=-1; learnRecipeAfterEat={(learnRecipeAction != null)}");
+            }
+
             DebugLog(
-                $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} (slotIdx={itemSlotIndex}), lootUi={(lootSlotController == null ? "no" : "yes")}, Eat/GainSkill/FireEvent paths");
+                $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} (slotIdx={itemSlotIndex}, consumeSlot={slotForConsumeAndSkills}), lootUi={(lootSlotController == null ? "no" : "yes")}, Eat/GainSkill/LearnRecipe/FireEvent paths");
 
             var progressionNames = ResolveGainSkillProgressionNames(gainSkillAction, itemClass);
             if (gainSkillAction != null)
@@ -582,7 +603,7 @@ namespace AutoReadMod
                         itemValue,
                         gameManager,
                         effectEntity,
-                        itemSlotIndex,
+                        slotForMinEvents,
                         itemName,
                         i + 1,
                         effectStack);
@@ -623,7 +644,7 @@ namespace AutoReadMod
                                     gameManager,
                                     effectEntity,
                                     itemValue,
-                                    itemSlotIndex,
+                                    slotForConsumeAndSkills,
                                     eatActionIndex,
                                     itemName,
                                     i + 1,
@@ -646,7 +667,7 @@ namespace AutoReadMod
                                 itemValue,
                                 gameManager,
                                 effectEntity,
-                                itemSlotIndex,
+                                slotForMinEvents,
                                 itemName,
                                 i + 1,
                                 "after vanilla read path",
@@ -672,7 +693,7 @@ namespace AutoReadMod
                             gameManager,
                             effectEntity,
                             itemValue,
-                            itemSlotIndex,
+                            slotForConsumeAndSkills,
                             gainSkillActionIndex,
                             itemName,
                             i + 1,
@@ -694,6 +715,25 @@ namespace AutoReadMod
                                 i + 1,
                                 "context player");
                         }
+                    }
+
+                    if (consumedThisUnit > 0 && learnRecipeAction != null)
+                    {
+                        var recipeOk = TryLearnRecipeExecuteActionReflection(
+                            learnRecipeAction,
+                            itemClass,
+                            effectStack,
+                            gameManager,
+                            effectEntity,
+                            itemValue,
+                            slotForConsumeAndSkills,
+                            learnRecipeActionIndex,
+                            itemName,
+                            i + 1,
+                            effectiveCount,
+                            consumedThisUnit);
+                        LogHypothesis(
+                            $"ApplyReadableEffects: item {i + 1}: ItemActionLearnRecipe.ExecuteAction invoked ok={recipeOk} for {itemName}");
                     }
 
                     if (consumedThisUnit > 0)
@@ -1091,6 +1131,98 @@ namespace AutoReadMod
                 LogHypothesis(
                     $"GainSkill [{unitIndex}/{effectiveCount}] {itemName}: exception → {root.GetType().Name}: {root.Message}");
                 ApplyMissingGainSkillLevels(effectEntity, progressionNames, skillLevelsBefore, consumedUnits, itemName, unitIndex, "effect entity after exception");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Schematics/recipes use <see cref="ItemActionLearnRecipe"/> after <see cref="ItemActionEat"/> consumes.
+        /// Required when <c>ItemInventoryData.slotIdx</c> is <c>-1</c> for open-loot reads (safe slot mapping).
+        /// </summary>
+        private static bool TryLearnRecipeExecuteActionReflection(
+            object learnRecipeAction,
+            ItemClass itemClass,
+            ItemStack stackForRecipe,
+            object gameManager,
+            EntityAlive effectEntity,
+            ItemValue itemValue,
+            int itemSlotIndex,
+            int learnRecipeActionIndex,
+            string itemName,
+            int unitIndex,
+            int effectiveCount,
+            int consumedUnits)
+        {
+            _ = consumedUnits;
+            try
+            {
+                if (learnRecipeAction == null)
+                {
+                    return false;
+                }
+
+                var invData = GameReflection.CreateItemInventoryData(
+                    itemClass,
+                    stackForRecipe,
+                    gameManager,
+                    effectEntity,
+                    itemSlotIndex,
+                    itemValue);
+                if (invData == null)
+                {
+                    LogHypothesis($"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: CreateItemInventoryData returned null");
+                    return false;
+                }
+
+                object actionData = null;
+                if (!GameReflection.TryInvokeInstanceMethod(learnRecipeAction, "CreateModifierData", out actionData, invData, learnRecipeActionIndex) ||
+                    actionData == null)
+                {
+                    if (learnRecipeActionIndex == 0)
+                    {
+                        LogHypothesis($"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: CreateModifierData(idx=0) failed");
+                        return false;
+                    }
+
+                    if (!GameReflection.TryInvokeInstanceMethod(learnRecipeAction, "CreateModifierData", out actionData, invData, 0) || actionData == null)
+                    {
+                        LogHypothesis(
+                            $"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: CreateModifierData(idx={learnRecipeActionIndex} and idx=0) both failed");
+                        return false;
+                    }
+                }
+
+                AttachEventParamsToActionData(
+                    actionData,
+                    itemClass,
+                    itemValue,
+                    invData,
+                    gameManager,
+                    effectEntity,
+                    itemSlotIndex,
+                    itemName,
+                    unitIndex);
+
+                if (GameReflection.TryInvokeInstanceMethod(learnRecipeAction, "ExecuteAction", out var _, actionData, true))
+                {
+                    LogHypothesis($"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: ExecuteAction(released=true) invoked");
+                    return true;
+                }
+
+                if (GameReflection.TryInvokeInstanceMethod(learnRecipeAction, "ExecuteAction", out var _, actionData, false))
+                {
+                    LogHypothesis($"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: ExecuteAction(released=false) invoked");
+                    return true;
+                }
+
+                LogHypothesis($"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: ExecuteAction not invoked");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                var root = UnwrapReflectionException(ex);
+                LogHypothesis(
+                    $"LearnRecipe [{unitIndex}/{effectiveCount}] {itemName}: exception → {root.GetType().Name}: {root.Message}");
                 return false;
             }
         }

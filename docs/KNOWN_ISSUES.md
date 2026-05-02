@@ -16,4 +16,4 @@ Opening a loot container with readables could flood the log with **`InvalidCastE
 
 **Cause:** loot slot indices (0…N) were passed as **`ItemInventoryData.slotIdx`** for eat / min-event paths. The game treated them as **player inventory** indices and left **`ItemActionEat`** action data inconsistent on those slots.
 
-**Fix:** use **`slotIdx = -1`** for item-action inventory data whenever reading from an open **`XUiC_LootWindowGroup`**; keep the real index only for resolving the loot **`XUiC_ItemStack`** controller.
+**Fix:** use **`slotIdx = -1`** for eat/consume/skill **`ItemInventoryData`** whenever reading from open loot; keep the real index only for resolving the loot **`XUiC_ItemStack`** controller. **Recipe unlock:** invoke **`ItemActionLearnRecipe.ExecuteAction`** after consume (vanilla schematic actions), since Eat alone with **`slotIdx = -1`** may not unlock recipes.
