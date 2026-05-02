@@ -362,7 +362,11 @@ namespace AutoReadMod
                         $"ReadStack: bundleSlotController={(lootSlotController == null ? "null" : lootSlotController.GetType().Name)} bag={bundleReadFromBag} slot={itemSlotIndex}");
                 }
 
-                var successfulConsumes = ApplyReadableEffects(player, itemStack, targetCount, itemSlotIndex, lootSlotController);
+                // Loot grid indices are not player inventory indices. Passing them as ItemInventoryData.slotIdx
+                // wires eat/min-event state onto the wrong toolbelt slots and causes repeated InvalidCastException
+                // in ItemActionEat.OnHoldingUpdate / IsActionRunning (see client logs).
+                var slotIdxForItemActions = lootWindowGroup != null ? -1 : itemSlotIndex;
+                var successfulConsumes = ApplyReadableEffects(player, itemStack, targetCount, slotIdxForItemActions, lootSlotController);
                 DebugLog($"Consumed {successfulConsumes}/{targetCount}x {itemName}, now updating slot");
 
                 if (successfulConsumes <= 0)
