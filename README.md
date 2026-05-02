@@ -16,7 +16,6 @@ Release zip names use the **mod version**. See [`docs/COMPATIBILITY.md`](docs/CO
   AutoReadMod.dll
   Config.xml
   ModInfo.xml
-  icon.png
 ```
 
 If the `Mods` folder does not exist, create it next to `7DaysToDie.exe`.
