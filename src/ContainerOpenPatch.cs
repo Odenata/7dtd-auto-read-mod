@@ -49,76 +49,78 @@ namespace AutoReadMod
     }
 
     /// <summary>
-    /// Patches XUiC_LootWindowGroup.SetTileEntityChest - called when loot UI is shown.
-    /// Parameter names must match exactly: (string _lootContainerName, ITileEntityLootable _te).
+    /// v3.0: hook <see cref="XUiC_LootWindow.SetTileEntityChest"/> — runs after <c>lootContainer.SetSlots</c> binds
+    /// itemControllers, so auto-read can run immediately (no frame delay). Do not also patch <c>OpenLooting</c> (double read).
     /// </summary>
-    [HarmonyPatch(typeof(XUiC_LootWindowGroup), "SetTileEntityChest", new System.Type[] { typeof(string), typeof(ITileEntityLootable) })]
+    [HarmonyPatch(typeof(XUiC_LootWindow), "SetTileEntityChest", new System.Type[] { typeof(string), typeof(ITileEntityLootable), typeof(bool) })]
     public class ContainerOpenPatch
     {
-        static void Postfix(XUiC_LootWindowGroup __instance, string _lootContainerName, ITileEntityLootable _te)
+        static void Postfix(XUiC_LootWindow __instance, string _lootContainerName, ITileEntityLootable _te, bool _playOpenSound)
         {
-            var lootContainer = _te as TileEntityLootContainer;
-            int itemsLength = lootContainer?.items?.Length ?? -1;
+            if (_te == null)
+                return;
+
+            var lootWindowGroup = GameReflection.TryResolveLootWindowGroupFromLootWindow(__instance);
+            var items = ContainerOpenPatchShared.TryGetLootItems(_te);
+            int itemsLength = items?.Length ?? -1;
             int nonEmptyCount = 0;
-            if (lootContainer?.items != null)
+            if (items != null)
             {
-                for (int i = 0; i < lootContainer.items.Length; i++)
+                for (int i = 0; i < items.Length; i++)
                 {
-                    var s = lootContainer.items[i];
+                    var s = items[i];
                     if (s != null && !s.IsEmpty()) nonEmptyCount++;
                 }
             }
-            var player = GameReflection.GetPlayerFromLootWindowGroup(__instance);
-            if (lootContainer != null && player != null && nonEmptyCount == 0 && itemsLength >= 0)
+
+            var player = GameReflection.GetPlayerFromLootWindow(__instance)
+                         ?? (lootWindowGroup != null ? GameReflection.GetPlayerFromLootWindowGroup(lootWindowGroup) : null);
+
+            if (player != null && nonEmptyCount == 0 && itemsLength >= 0)
             {
-                ContainerOpenPatchShared.SetDeferred(player, lootContainer, __instance);
+                ContainerOpenPatchShared.SetDeferred(player, _te, lootWindowGroup, __instance);
                 return;
             }
 
-            // Non-empty loot: wait for XUiC_LootContainer.itemControllers to bind (otherwise TryGetLootSlotItemStackController stays null).
-            if (lootContainer != null && player != null && nonEmptyCount > 0)
-            {
-                ContainerOpenPatchShared.ScheduleLootReadAfterUiBind(player, _te, __instance);
-                return;
-            }
-
-            ContainerOpenPatchShared.ProcessLootContainer(player, _te, __instance);
+            ContainerOpenPatchShared.ProcessLootContainer(player, _te, lootWindowGroup, __instance);
         }
     }
 
-    /// <summary>
-    /// Only patch XUiC_LootWindowGroup - XUiC_LootWindow.SetTileEntityChest is called from it,
-    /// so patching both caused double processing (same container read twice).
-    /// </summary>
+    /// <summary>Re-sync loot slot controllers after the window is shown (SetTileEntityChest runs before Open).</summary>
+    [HarmonyPatch(typeof(XUiC_LootWindow), "OnOpen")]
+    public class LootWindowOnOpenPatch
+    {
+        static void Postfix(XUiC_LootWindow __instance)
+        {
+            ContainerOpenPatchShared.TryApplyPendingLootUiRefresh(__instance);
+        }
+    }
 
     internal static class ContainerOpenPatchShared
     {
         private static EntityPlayer _deferredPlayer;
-        private static TileEntityLootContainer _deferredContainer;
+        private static ITileEntityLootable _deferredContainer;
         private static XUiC_LootWindowGroup _deferredLootWindowGroup;
+        private static XUiC_LootWindow _deferredLootWindow;
         private static int _deferredFramesLeft;
 
-        private static EntityPlayer _pendingLootPlayer;
-        private static ITileEntityLootable _pendingLootTile;
-        private static XUiC_LootWindowGroup _pendingLootWindowGroup;
-        private static int _pendingLootFramesLeft;
+        private static XUiC_LootWindow _pendingRefreshLootWindow;
+        private static ITileEntityLootable _pendingRefreshTileEntity;
 
         /// <summary>Frames to wait for loot to populate after opening an empty container (~3s at 60fps).</summary>
         internal const int MaxDeferredFrames = 180;
 
-        /// <summary>Frames before auto-read when loot already has items — lets loot slot XUi controllers attach.</summary>
-        internal const int LootUiBindDelayFrames = 10;
-
-        internal static bool HasNonEmptyLootItems(TileEntityLootContainer container)
+        internal static bool HasNonEmptyLootItems(ITileEntityLootable container)
         {
-            if (container?.items == null)
+            var items = TryGetLootItems(container);
+            if (items == null)
             {
                 return false;
             }
 
-            for (int i = 0; i < container.items.Length; i++)
+            for (int i = 0; i < items.Length; i++)
             {
-                var s = container.items[i];
+                var s = items[i];
                 if (s != null && !s.IsEmpty())
                 {
                     return true;
@@ -131,8 +133,6 @@ namespace AutoReadMod
         /// <summary>Called once per frame from XUi Update. When loot was empty at open, waits until items appear then auto-reads once.</summary>
         internal static void ProcessDeferredContainer()
         {
-            TickPendingLootReadFrame();
-
             if (_deferredPlayer == null || _deferredContainer == null)
             {
                 return;
@@ -140,10 +140,11 @@ namespace AutoReadMod
 
             if (HasNonEmptyLootItems(_deferredContainer))
             {
-                ProcessLootContainer(_deferredPlayer, _deferredContainer, _deferredLootWindowGroup);
+                ProcessLootContainer(_deferredPlayer, _deferredContainer, _deferredLootWindowGroup, _deferredLootWindow);
                 _deferredPlayer = null;
                 _deferredContainer = null;
                 _deferredLootWindowGroup = null;
+                _deferredLootWindow = null;
                 return;
             }
 
@@ -153,57 +154,81 @@ namespace AutoReadMod
                 _deferredPlayer = null;
                 _deferredContainer = null;
                 _deferredLootWindowGroup = null;
+                _deferredLootWindow = null;
             }
         }
 
-        internal static void SetDeferred(EntityPlayer player, TileEntityLootContainer container, XUiC_LootWindowGroup lootWindowGroup)
+        internal static void SetDeferred(EntityPlayer player, ITileEntityLootable container, XUiC_LootWindowGroup lootWindowGroup, XUiC_LootWindow lootWindow)
         {
             _deferredPlayer = player;
             _deferredContainer = container;
             _deferredLootWindowGroup = lootWindowGroup;
+            _deferredLootWindow = lootWindow;
             _deferredFramesLeft = MaxDeferredFrames;
         }
 
-        internal static void ScheduleLootReadAfterUiBind(EntityPlayer player, ITileEntityLootable tileEntity, XUiC_LootWindowGroup lootWindowGroup)
+        internal static void ProcessLootContainer(EntityPlayer player, ITileEntityLootable te, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
         {
-            _pendingLootPlayer = player;
-            _pendingLootTile = tileEntity;
-            _pendingLootWindowGroup = lootWindowGroup;
-            _pendingLootFramesLeft = LootUiBindDelayFrames;
+            if (player == null || te == null)
+                return;
+
+            AutoReader.ProcessContainer(player, te, lootWindowGroup, lootWindow);
+            MarkLootUiRefreshNeeded(lootWindow, te);
+            GameReflection.RefreshLootContainerUiFromTileEntity(lootWindow, te);
         }
 
-        private static void TickPendingLootReadFrame()
+        internal static void MarkLootUiRefreshNeeded(XUiC_LootWindow lootWindow, ITileEntityLootable te)
         {
-            if (_pendingLootFramesLeft <= 0 || _pendingLootTile == null || _pendingLootPlayer == null)
+            if (lootWindow == null || te == null)
+                return;
+            _pendingRefreshLootWindow = lootWindow;
+            _pendingRefreshTileEntity = te;
+        }
+
+        internal static void TryApplyPendingLootUiRefresh(XUiC_LootWindow lootWindow)
+        {
+            if (lootWindow == null || _pendingRefreshLootWindow != lootWindow || _pendingRefreshTileEntity == null)
+                return;
+
+            var te = _pendingRefreshTileEntity;
+            _pendingRefreshLootWindow = null;
+            _pendingRefreshTileEntity = null;
+            GameReflection.RefreshLootContainerUiFromTileEntity(lootWindow, te);
+        }
+
+        internal static ItemStack[] TryGetLootItems(ITileEntityLootable container)
+        {
+            if (container == null)
+            {
+                return null;
+            }
+
+            return GameReflection.GetMemberValue<ItemStack[]>(container, "items");
+        }
+
+        internal static bool TryWriteLootItem(ITileEntityLootable container, ItemStack[] items, int slotIndex, ItemStack updatedStack)
+        {
+            if (items == null || slotIndex < 0 || slotIndex >= items.Length)
+            {
+                return false;
+            }
+
+            items[slotIndex] = updatedStack;
+            GameReflection.TryUpdateLootContainerSlot(container, slotIndex, updatedStack);
+            TryMarkLootContainerTouched(container);
+            return true;
+        }
+
+        private static void TryMarkLootContainerTouched(ITileEntityLootable container)
+        {
+            if (container == null)
             {
                 return;
             }
 
-            _pendingLootFramesLeft--;
-            if (_pendingLootFramesLeft > 0)
-            {
-                return;
-            }
-
-            var player = _pendingLootPlayer;
-            var tile = _pendingLootTile;
-            var group = _pendingLootWindowGroup;
-            _pendingLootPlayer = null;
-            _pendingLootTile = null;
-            _pendingLootWindowGroup = null;
-            ProcessLootContainer(player, tile, group);
-        }
-
-        internal static void ProcessLootContainer(EntityPlayer player, ITileEntityLootable _te, XUiC_LootWindowGroup lootWindowGroup = null)
-        {
-            if (player == null || _te == null)
-                return;
-
-            var lootContainer = _te as TileEntityLootContainer;
-            if (lootContainer == null)
-                return;
-
-            AutoReader.ProcessContainer(player, lootContainer, lootWindowGroup);
+            // v3 loot containers are interface-based; touch flags nudge persistence/replication without concrete type refs.
+            GameReflection.SetMemberValue(container, "bTouched", true);
+            GameReflection.SetMemberValue(container, "bWasTouched", true);
         }
 
         internal static void SafeLog(string message)

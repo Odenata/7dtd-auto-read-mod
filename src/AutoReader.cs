@@ -85,7 +85,7 @@ namespace AutoReadMod
             Recipe,
         }
 
-        public static void ProcessContainer(EntityPlayer player, TileEntityLootContainer container, XUiC_LootWindowGroup lootWindowGroup = null)
+        public static void ProcessContainer(EntityPlayer player, ITileEntityLootable container, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
         {
             DebugLog($"ProcessContainer called, Enabled={ModConfig.Instance.Enabled}");
 
@@ -95,13 +95,14 @@ namespace AutoReadMod
                 return;
             }
 
-            if (player == null || container?.items == null)
+            var items = ContainerOpenPatchShared.TryGetLootItems(container);
+            if (player == null || items == null)
             {
-                DebugLog($"Null check failed: player={player != null}, items={container?.items != null}");
+                DebugLog($"Null check failed: player={player != null}, items={items != null}");
                 return;
             }
 
-            var itemsToRead = FindReadableSlotIndices(container.items);
+            var itemsToRead = FindReadableSlotIndices(items);
 
             DebugLog($"Found {itemsToRead.Count} readable items");
 
@@ -111,13 +112,12 @@ namespace AutoReadMod
                 int slotIndex = itemsToRead[i];
                 ReadStack(
                     player,
-                    container.items[slotIndex],
-                    GameReflection.GetItemCount(container.items[slotIndex]),
+                    items[slotIndex],
+                    GameReflection.GetItemCount(items[slotIndex]),
                     AutoReadVisualizationSource.Container,
                     updatedStack =>
                 {
-                    container.UpdateSlot(slotIndex, updatedStack);
-                    container.SetModified();
+                    ContainerOpenPatchShared.TryWriteLootItem(container, items, slotIndex, updatedStack);
                 },
                     itemSlotIndex: slotIndex,
                     lootWindowGroup: lootWindowGroup);

@@ -1,7 +1,7 @@
 diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 --- a/mocks/GameClasses.cs
 +++ b/mocks/GameClasses.cs
-@@ -1,90 +1,348 @@
+@@ -1,90 +1,403 @@
 -// Mock game classes - API signatures only, no implementation
 -// Based on documented API from docs/GAME_API.md
 -
@@ -364,6 +364,8 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public void SetSlots(ItemStack[] slots) { _slots = slots ?? System.Array.Empty<ItemStack>(); }
 +}
 +
++public interface ITileEntity { }
++
 +public interface ITileEntityLootable { }
 +
 +public class TileEntityLootContainer : ITileEntityLootable
@@ -374,7 +376,11 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public TileEntityLootContainer(object _) { }
 +
 +    public void RemoveItem(int index) { }
-+    public void UpdateSlot(int index, ItemStack stack) { }
++    public void UpdateSlot(int index, ItemStack stack)
++    {
++        if (items == null || index < 0 || index >= items.Length) return;
++        items[index] = stack;
++    }
 +    public void SetModified() { }
 +}
 +
@@ -411,20 +417,69 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public void SetTileEntityChest(TileEntityLootContainer container) { }
 +}
 +
-+public class XUiC_LootWindow
-+{
-+    public PlayerUI playerUI { get; set; }
-+}
-+
 +public class PlayerUI
 +{
 +    public EntityPlayer entityPlayer { get; set; }
++}
++
++public class XUiController
++{
++    public XUiController Parent { get; set; }
 +}
 +
 +public class XUiC_ItemStack
 +{
 +    public ItemStack ItemStack { get; set; }
 +    public XUiC_ItemStack() { }
++
++    public void ForceSetItemStack(ItemStack stack)
++    {
++        ItemStack = stack;
++    }
++}
++
++public class XUiC_ItemStackGrid : XUiController
++{
++    public XUiC_ItemStack[] itemControllers { get; set; }
++}
++
++public class XUiC_LootWindow
++{
++    public PlayerUI playerUI { get; set; }
++    public XUi xui { get; set; }
++    public XUiController Parent { get; set; }
++    public XUiC_LootContainer lootContainer { get; set; }
++
++    public void SetTileEntityChest(string _lootContainerName, ITileEntityLootable _te, bool _playOpenSound = true) { }
++    public void OnOpen() { }
++}
++
++public class XUiC_LootContainer : XUiC_ItemStackGrid
++{
++    public ITileEntityLootable localTileEntity { get; set; }
++
++    public void SetSlots(ITileEntityLootable lootContainer, ItemStack[] stackList)
++    {
++        localTileEntity = lootContainer;
++        if (stackList == null || itemControllers == null) return;
++        var length = System.Math.Min(stackList.Length, itemControllers.Length);
++        for (var i = 0; i < length; i++)
++        {
++            var controller = itemControllers[i];
++            if (controller == null) continue;
++            var stack = stackList[i];
++            controller.ForceSetItemStack(stack == null || stack.IsEmpty() ? ItemStack.Empty : stack);
++        }
++    }
++
++    public void OnTileEntityChanged(ITileEntity te)
++    {
++        if (te is ITileEntityLootable lootable)
++        {
++            var items = ((TileEntityLootContainer)te).items;
++            SetSlots(lootable, items);
++        }
++    }
 +}
 +
 +// --- Mod API ---

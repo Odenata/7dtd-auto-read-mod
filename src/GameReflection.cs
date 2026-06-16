@@ -30,6 +30,199 @@ namespace AutoReadMod
             return GetMemberValue<EntityPlayer>(playerUi, "entityPlayer");
         }
 
+        internal static EntityPlayer GetPlayerFromLootWindow(XUiC_LootWindow lootWindow)
+        {
+            if (lootWindow == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var xui = GetMemberValue<object>(lootWindow, "xui");
+                var playerUi = GetMemberValue<object>(xui, "playerUI");
+                return GetMemberValue<EntityPlayer>(playerUi, "entityPlayer");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        internal static XUiC_LootWindowGroup TryResolveLootWindowGroupFromLootWindow(XUiC_LootWindow lootWindow)
+        {
+            if (lootWindow == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                for (var current = (object)lootWindow; current != null; current = GetMemberValue<object>(current, "Parent"))
+                {
+                    if (current is XUiC_LootWindowGroup group)
+                    {
+                        return group;
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Rebind loot slot controllers from the tile entity after auto-read mutates backing stacks.
+        /// Uses vanilla <c>SetSlots</c> (same as <see cref="XUiC_LootWindow.SetTileEntityChest"/>).
+        /// </summary>
+        internal static void RefreshLootContainerUiFromTileEntity(XUiC_LootWindow lootWindow, ITileEntityLootable te)
+        {
+            if (lootWindow == null || te == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var lootContainer = GetMemberValue<object>(lootWindow, "lootContainer");
+                if (lootContainer == null)
+                {
+                    return;
+                }
+
+                var items = GetMemberValue<ItemStack[]>(te, "items");
+                var setSlots = lootContainer.GetType().GetMethod(
+                    "SetSlots",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(ITileEntityLootable), typeof(ItemStack[]) },
+                    null);
+                if (setSlots != null)
+                {
+                    setSlots.Invoke(lootContainer, new object[] { te, items });
+                }
+                else
+                {
+                    var onChanged = lootContainer.GetType().GetMethod(
+                        "OnTileEntityChanged",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                        null,
+                        new[] { typeof(ITileEntity) },
+                        null);
+                    onChanged?.Invoke(lootContainer, new object[] { te });
+                }
+
+                SyncLootGridItemControllers(lootContainer, items);
+            }
+            catch
+            {
+                // best-effort UI sync
+            }
+        }
+
+        private static void SyncLootGridItemControllers(object lootContainer, ItemStack[] items)
+        {
+            if (lootContainer == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var controllers = GetMemberValue<object>(lootContainer, "itemControllers") as System.Array;
+                if (controllers == null || items == null)
+                {
+                    return;
+                }
+
+                var length = System.Math.Min(controllers.Length, items.Length);
+                for (var i = 0; i < length; i++)
+                {
+                    var controller = controllers.GetValue(i) as XUiC_ItemStack;
+                    if (controller == null)
+                    {
+                        continue;
+                    }
+
+                    var displayStack = CloneItemStackForUi(items[i]);
+                    var forceSet = typeof(XUiC_ItemStack).GetMethod(
+                        "ForceSetItemStack",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                        null,
+                        new[] { typeof(ItemStack) },
+                        null);
+                    if (forceSet != null)
+                    {
+                        forceSet.Invoke(controller, new object[] { displayStack });
+                        continue;
+                    }
+
+                    if (_xUiItemStackItemStackProperty == null)
+                    {
+                        _xUiItemStackItemStackProperty = typeof(XUiC_ItemStack).GetProperty(
+                            "ItemStack",
+                            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    }
+
+                    _xUiItemStackItemStackProperty?.SetValue(controller, displayStack, null);
+                }
+            }
+            catch
+            {
+                // per-slot sync is belt-and-suspenders after SetSlots
+            }
+        }
+
+        private static ItemStack CloneItemStackForUi(ItemStack stack)
+        {
+            if (stack == null || stack.IsEmpty())
+            {
+                return ItemStack.Empty;
+            }
+
+            try
+            {
+                var clone = typeof(ItemStack).GetMethod("Clone", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (clone != null)
+                {
+                    return clone.Invoke(stack, null) as ItemStack;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            return new ItemStack(stack.itemValue, stack.count);
+        }
+
+        internal static void TryUpdateLootContainerSlot(ITileEntityLootable container, int slotIndex, ItemStack updatedStack)
+        {
+            if (container == null || slotIndex < 0)
+            {
+                return;
+            }
+
+            try
+            {
+                var stack = updatedStack ?? ItemStack.Empty;
+                var updateSlot = container.GetType().GetMethod(
+                    "UpdateSlot",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(int), typeof(ItemStack) },
+                    null);
+                updateSlot?.Invoke(container, new object[] { slotIndex, stack });
+            }
+            catch
+            {
+                // array write in TryWriteLootItem is the minimum; UpdateSlot keeps TE + UI listeners aligned
+            }
+        }
+
         /// <summary>
         /// Loot UI slot controller for <paramref name="slotIndex"/> — vanilla <c>ItemActionEat.ExecuteInstantAction</c> expects this when reading from an open loot grid (magazines/skills).
         /// </summary>

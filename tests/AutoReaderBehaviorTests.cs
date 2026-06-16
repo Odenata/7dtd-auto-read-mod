@@ -413,7 +413,7 @@ namespace AutoReadMod.Tests
                 {
                     items = new ItemStack[4],
                 };
-                ContainerOpenPatchShared.SetDeferred(player, container, null);
+                ContainerOpenPatchShared.SetDeferred(player, container, null, null);
 
                 for (int i = 0; i < 20; i++)
                 {
@@ -486,7 +486,7 @@ namespace AutoReadMod.Tests
                 {
                     items = new ItemStack[2],
                 };
-                ContainerOpenPatchShared.SetDeferred(player, container, null);
+                ContainerOpenPatchShared.SetDeferred(player, container, null, null);
 
                 for (int i = 0; i < ContainerOpenPatchShared.MaxDeferredFrames + 1; i++)
                 {
