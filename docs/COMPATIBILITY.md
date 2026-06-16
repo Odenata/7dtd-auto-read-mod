@@ -4,7 +4,7 @@ Use this table to see which **7 Days to Die** builds work with which **mod** ver
 
 | Mod version | 7 Days to Die (tested / expected) | Notes |
 |-------------|-----------------------------------|-------|
-| 0.1.0       | 2.6                               | Initial release. |
-| 0.1.0       | 3.0.0 (b252) experimental         | v3.0 compatibility: loot hook on `XUiC_LootWindow.SetTileEntityChest`; `ITileEntityLootable` write-back via reflection (`TryWriteLootItem`, `UpdateSlot`, `bTouched`/`bWasTouched`); post-read UI sync via `SetSlots` + slot-controller refresh and `OnOpen` pending refresh (prevents drag/shift-click dup). Init-verified patch load (zero skips). Maintainer smoke PASS 2026-06-16: instant read, items vanish from loot UI, bundles + Nerd outfit OK. |
+| 0.1.0       | 2.6                               | Initial release for Alpha 21 / game 2.6. **Not compatible with 3.0.** |
+| 1.0.0       | 3.0.0 (b252) experimental         | **Breaking release for v3.0 only** — Harmony targets, loot APIs, and UI hooks changed; do not install on 2.6. Loot hook on `XUiC_LootWindow.SetTileEntityChest`; `ITileEntityLootable` write-back via reflection; post-read UI sync via `SetSlots` + slot-controller refresh and `OnOpen` pending refresh. Maintainer smoke PASS 2026-06-16. |
 
 When you publish a release, add or adjust a row if the supported game range changed.

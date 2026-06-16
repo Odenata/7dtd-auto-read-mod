@@ -4,6 +4,6 @@
   <DisplayName value="Auto Read Mod" />
   <Description value="Auto-reads books, magazines, and schematics when opening loot containers." />
   <Author value="LearningGrounds" />
-  <Version value="0.1.0" />
+  <Version value="1.0.0" />
   <Website value="" />
 </ModInfo>
