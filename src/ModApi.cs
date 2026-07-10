@@ -13,6 +13,7 @@ namespace AutoReadMod
             var config = ModConfig.Instance;
             SafeLog($"Config: Enabled={config.Enabled}, DebugMode={config.DebugMode}");
             AutoReader.EmitDebugFileLocation();
+            BridgeHarmonyLogger(config.DebugMode);
 
             try
             {
@@ -21,7 +22,12 @@ namespace AutoReadMod
                 var updateTarget = XUiUpdatePatch.FindUpdateTarget();
                 if (updateTarget != null)
                 {
-                    harmony.Patch(updateTarget, postfix: new HarmonyMethod(typeof(XUiUpdatePatch), "Postfix"));
+                    var updatePostfix = new HarmonyMethod(typeof(XUiUpdatePatch), "Postfix")
+                    {
+                        wrapTryCatch = true,
+                        optional = true,
+                    };
+                    harmony.Patch(updateTarget, postfix: updatePostfix);
                     SafeLog("Per-frame update patch applied");
                 }
                 else
@@ -39,9 +45,12 @@ namespace AutoReadMod
                         null);
                     if (gmUpdate != null)
                     {
-                        harmony.Patch(
-                            gmUpdate,
-                            postfix: new HarmonyMethod(typeof(GameManagerDeferredTickHook), nameof(GameManagerDeferredTickHook.GameManagerUpdatePostfix)));
+                        var gmPostfix = new HarmonyMethod(typeof(GameManagerDeferredTickHook), nameof(GameManagerDeferredTickHook.GameManagerUpdatePostfix))
+                        {
+                            wrapTryCatch = true,
+                            optional = true,
+                        };
+                        harmony.Patch(gmUpdate, postfix: gmPostfix);
                         SafeLog("GameManager.Update deferred-tick backup patch applied");
                     }
                 }
@@ -58,6 +67,26 @@ namespace AutoReadMod
             }
 
             SafeLog("AutoReadMod loaded successfully");
+        }
+
+        private static void BridgeHarmonyLogger(bool debugMode)
+        {
+            try
+            {
+                HarmonyLib.Tools.Logger.MessageReceived += (sender, args) =>
+                {
+                    if (args.LogChannel == HarmonyLib.Tools.Logger.LogChannel.Error
+                        || args.LogChannel == HarmonyLib.Tools.Logger.LogChannel.Warn
+                        || debugMode)
+                    {
+                        SafeLog($"[Harmony] {args.LogChannel}: {args.Message}");
+                    }
+                };
+            }
+            catch
+            {
+                // HarmonyX logger unavailable in some test environments
+            }
         }
 
         private static void SafeLog(string message)

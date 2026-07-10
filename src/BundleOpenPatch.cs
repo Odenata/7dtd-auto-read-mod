@@ -6,6 +6,7 @@ using UnityEngine;
 namespace AutoReadMod
 {
     [HarmonyPatch(typeof(ItemActionOpenBundle), "ExecuteInstantAction", new System.Type[] { typeof(EntityAlive), typeof(ItemStack), typeof(bool), typeof(XUiC_ItemStack) })]
+    [HarmonyWrapSafe]
     public class OpenBundlePatch
     {
         static void Prefix(EntityAlive ent, ref InventorySnapshot __state)
@@ -20,6 +21,7 @@ namespace AutoReadMod
     }
 
     [HarmonyPatch(typeof(ItemActionOpenLootBundle), "ExecuteInstantAction", new System.Type[] { typeof(EntityAlive), typeof(ItemStack), typeof(bool), typeof(XUiC_ItemStack) })]
+    [HarmonyWrapSafe]
     public class OpenLootBundlePatch
     {
         static void Prefix(EntityAlive ent, ref InventorySnapshot __state)

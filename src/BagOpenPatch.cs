@@ -11,6 +11,7 @@ namespace AutoReadMod
     /// patch <c>Open</c> / <c>OpenStorageWindow</c> — double-read risk).
     /// </summary>
     [HarmonyPatch(typeof(XUiC_BagContainer), "SetBag", new Type[] { typeof(Bag), typeof(LootContainer), typeof(string), typeof(Action) })]
+    [HarmonyWrapSafe]
     public class BagOpenPatch
     {
         static void Postfix(XUiC_BagContainer __instance, Bag _bag, LootContainer _lootContainer, string _containerName, Action _onModified)
@@ -43,6 +44,7 @@ namespace AutoReadMod
 
     /// <summary>Re-sync bag slot controllers after the window is shown (SetBag may run before Open).</summary>
     [HarmonyPatch(typeof(XUiC_BagContainer), "OnOpen")]
+    [HarmonyWrapSafe]
     public class BagContainerOnOpenPatch
     {
         static void Postfix(XUiC_BagContainer __instance)

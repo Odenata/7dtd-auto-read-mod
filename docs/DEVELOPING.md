@@ -16,7 +16,7 @@ repos\
   7dtd-mod-dev-tools\
 ```
 
-The PowerShell wrappers in `tools/` delegate to that sibling checkout. Bazel fetches pinned external repositories from `MODULE.bazel` for mocks, Harmony, xUnit, and the xUnit runner.
+The PowerShell wrappers in `tools/` delegate to that sibling checkout. Bazel fetches pinned external repositories from `MODULE.bazel` for mocks, HarmonyX (compile-time), xUnit, and the xUnit runner. Runtime Harmony comes from the game's `Mods\0_TFP_Harmony` — do not ship `0Harmony.dll`. When `DebugMode` is on (and always for Warn/Error), HarmonyX messages are forwarded to Player.log as `[Harmony] …`.
 
 For local MSBuild or `dotnet` paths, the mod targets .NET Framework 4.7.2. `Directory.Build.props` reads:
 

@@ -54,6 +54,7 @@ namespace AutoReadMod
     /// itemControllers, so auto-read can run immediately (no frame delay). Do not also patch <c>OpenLooting</c> (double read).
     /// </summary>
     [HarmonyPatch(typeof(XUiC_LootWindow), "SetTileEntityChest", new System.Type[] { typeof(string), typeof(ITileEntityLootable), typeof(bool) })]
+    [HarmonyWrapSafe]
     public class ContainerOpenPatch
     {
         static void Postfix(XUiC_LootWindow __instance, string _lootContainerName, ITileEntityLootable _te, bool _playOpenSound)
@@ -89,6 +90,7 @@ namespace AutoReadMod
 
     /// <summary>Re-sync loot slot controllers after the window is shown (SetTileEntityChest runs before Open).</summary>
     [HarmonyPatch(typeof(XUiC_LootWindow), "OnOpen")]
+    [HarmonyWrapSafe]
     public class LootWindowOnOpenPatch
     {
         static void Postfix(XUiC_LootWindow __instance)
