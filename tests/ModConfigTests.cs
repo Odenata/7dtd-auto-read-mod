@@ -66,6 +66,13 @@ namespace AutoReadMod.Tests
         }
 
         [Fact]
+        public void DefaultConfig_SkipAlreadyReadIsFalse()
+        {
+            var config = new ModConfig();
+            Assert.False(config.SkipAlreadyRead);
+        }
+
+        [Fact]
         public void ModConfig_CanSetProperties()
         {
             // Arrange
@@ -73,6 +80,7 @@ namespace AutoReadMod.Tests
             
             // Act
             config.Enabled = false;
+            config.SkipAlreadyRead = true;
             config.ReadBooks = false;
             config.ReadMagazines = false;
             config.ReadSchematics = false;
@@ -80,6 +88,7 @@ namespace AutoReadMod.Tests
             
             // Assert
             Assert.False(config.Enabled);
+            Assert.True(config.SkipAlreadyRead);
             Assert.False(config.ReadBooks);
             Assert.False(config.ReadMagazines);
             Assert.False(config.ReadSchematics);
@@ -94,6 +103,7 @@ namespace AutoReadMod.Tests
             
             // Assert
             Assert.True(config.Enabled);
+            Assert.False(config.SkipAlreadyRead);
             Assert.True(config.ReadBooks);
             Assert.True(config.ReadMagazines);
             Assert.True(config.ReadSchematics);

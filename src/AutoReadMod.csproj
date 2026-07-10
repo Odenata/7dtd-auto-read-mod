@@ -39,6 +39,7 @@
     <Compile Include="ModApi.cs" />
     <Compile Include="ModConfig.cs" />
     <Compile Include="ContainerOpenPatch.cs" />
+    <Compile Include="BagOpenPatch.cs" />
     <Compile Include="BundleOpenPatch.cs" />
     <Compile Include="GameReflection.cs" />
     <Compile Include="AutoReader.cs" />

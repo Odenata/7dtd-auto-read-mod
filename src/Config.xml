@@ -3,6 +3,9 @@
   <!-- Turn the whole mod on or off without uninstalling. Values: true, false -->
   <Enabled>true</Enabled>
 
+  <!-- When true, leave maxed magazines / already-read books / known schematics in loot (partial stacks OK). Values: true, false -->
+  <SkipAlreadyRead>false</SkipAlreadyRead>
+
   <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
   <DebugMode>false</DebugMode>
 

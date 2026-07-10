@@ -8,6 +8,7 @@ net_library(
         "ModApi.cs",
         "ModConfig.cs",
         "ContainerOpenPatch.cs",
+        "BagOpenPatch.cs",
         "BundleOpenPatch.cs",
         "GameReflection.cs",
         "AutoReader.cs",

@@ -475,6 +475,46 @@ namespace AutoReadMod.Tests
         }
 
         [Fact]
+        public void ProcessEntityLootBag_WhenEnabled_ConsumesReadableBagSlots()
+        {
+            DrainQueue();
+            var originalConfig = ModConfig.Instance;
+            var originalGm = GameManager.Instance;
+            try
+            {
+                SetConfig(new ModConfig
+                {
+                    Enabled = true,
+                    ReadBooks = true,
+                    ReadMagazines = true,
+                    ReadSchematics = true,
+                });
+                GameManager.Instance = new GameManager();
+                var bag = new Bag();
+                bag.SetSlots(new[]
+                {
+                    CreateStack("bookFiremansAlmanacHeat", 1),
+                    null,
+                });
+                var player = new EntityPlayer { EntityName = "p", inventory = new Inventory() };
+
+                AutoReader.ProcessEntityLootBag(player, bag);
+
+                var slots = bag.GetSlots();
+                Assert.True(slots[0] == null || slots[0].IsEmpty());
+                var events = AutoReadVisualizationQueue.DequeueAllForTest();
+                Assert.Single(events);
+                Assert.Equal(AutoReadVisualizationSource.Container, events[0].Source);
+            }
+            finally
+            {
+                GameManager.Instance = originalGm;
+                ModConfig.Reload();
+                DrainQueue();
+            }
+        }
+
+        [Fact]
         public void ProcessDeferredContainer_StopsAfterMaxFramesWithoutLoot()
         {
             var originalConfig = ModConfig.Instance;

@@ -9,6 +9,12 @@ namespace AutoReadMod
     public class ModConfig
     {
         public bool Enabled { get; set; } = true;
+        /// <summary>
+        /// When true, stop consuming units that would grant no progression/recipe benefit
+        /// (maxed magazines, already-unlocked books/perks, known schematics). Partial stacks leave leftovers.
+        /// Default false preserves always-consume-from-loot behavior.
+        /// </summary>
+        public bool SkipAlreadyRead { get; set; } = false;
         public bool ReadBooks { get; set; } = true;
         public bool ReadMagazines { get; set; } = true;
         public bool ReadSchematics { get; set; } = true;
@@ -72,6 +78,10 @@ namespace AutoReadMod
                 if (enabledNode != null)
                     config.Enabled = bool.Parse(enabledNode.InnerText);
 
+                var skipAlreadyReadNode = doc.SelectSingleNode("//SkipAlreadyRead");
+                if (skipAlreadyReadNode != null)
+                    config.SkipAlreadyRead = bool.Parse(skipAlreadyReadNode.InnerText);
+
                 var booksNode = doc.SelectSingleNode("//ItemTypes/Books");
                 if (booksNode != null)
                     config.ReadBooks = bool.Parse(booksNode.InnerText);
@@ -109,7 +119,7 @@ namespace AutoReadMod
                 if (colorSchematicNode != null)
                     config.VisualizationColorSchematic = TryParseHexColor(colorSchematicNode.InnerText?.Trim(), config.VisualizationColorSchematic);
 
-                SafeLog($"AutoReadMod config loaded: Enabled={config.Enabled}");
+                SafeLog($"AutoReadMod config loaded: Enabled={config.Enabled}, SkipAlreadyRead={config.SkipAlreadyRead}");
             }
             catch (Exception)
             {
@@ -129,6 +139,8 @@ namespace AutoReadMod
 <AutoReadModConfig>
   <!-- Turn the whole mod on or off without uninstalling. Values: true, false -->
   <Enabled>true</Enabled>
+  <!-- When true, leave maxed magazines / already-read books / known schematics in loot (partial stacks OK). Values: true, false -->
+  <SkipAlreadyRead>false</SkipAlreadyRead>
   <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
   <DebugMode>false</DebugMode>
   <!-- Which item types to auto-read when you open loot. Set to false to skip that type. Values: true, false -->

@@ -17,7 +17,7 @@ Keep these version fields aligned for each release:
 - [`../MODULE.bazel`](../MODULE.bazel) `module(version = "...")`
 - [`../src/ModInfo.xml`](../src/ModInfo.xml) `<Version value="..." />`
 
-Release zip names use **mod version only** (for example `dist\AutoReadMod-1.0.0.zip`). Update [`COMPATIBILITY.md`](COMPATIBILITY.md) when you confirm support for new game builds or when compatibility changes.
+Release zip names use **mod version only** (for example `dist\AutoReadMod-1.1.0.zip`). Update [`COMPATIBILITY.md`](COMPATIBILITY.md) when you confirm support for new game builds or when compatibility changes.
 
 ## Release checklist
 
@@ -38,24 +38,30 @@ Release zip names use **mod version only** (for example `dist\AutoReadMod-1.0.0.
    bazel build //src:AutoReadMod
    ```
 
-7. Stage the release files under `prepared_mod_files\AutoReadMod\`:
+7. Create the release zip:
+
+   ```powershell
+   .\tools\package_release.ps1 -DllPath .\bazel-bin\src\AutoReadMod.dll
+   ```
+
+   Or, without `-DllPath`, the script uses `src\bin\Release\net472\AutoReadMod.dll` after `.\tools\build.ps1 -Configuration Release`.
+
+8. Inspect the zip before upload. It should contain one top-level folder:
 
    ```text
    AutoReadMod/
-     0Harmony.dll
      AutoReadMod.dll
      Config.xml
      ModInfo.xml
    ```
 
-8. Create `dist\AutoReadMod-<version>.zip` with one top-level `AutoReadMod\` folder.
-9. Inspect the zip before upload.
-10. Upload the zip to CurseForge or GitHub Releases.
-11. Select the supported 7 Days to Die game version(s), keeping them consistent with `COMPATIBILITY.md`.
-12. Add a markdown changelog for the file.
-13. Paste or update the project description from `CURSEFORGE_DESCRIPTION.md`.
-14. Verify the uploaded file after approval by downloading it and checking the zip layout.
-15. Create a matching Git tag and GitHub Release if you want GitHub to retain old downloadable versions.
+   Do **not** include `0Harmony.dll`. Players use the game's official `Mods\0_TFP_Harmony`.
+9. Upload `dist\AutoReadMod-<version>.zip` to CurseForge or GitHub Releases (see console output for the exact path).
+10. Select the supported 7 Days to Die game version(s), keeping them consistent with `COMPATIBILITY.md`.
+11. Add a markdown changelog for the file.
+12. Paste or update the project description from `CURSEFORGE_DESCRIPTION.md`.
+13. Verify the uploaded file after approval by downloading it and checking the zip layout.
+14. Create a matching Git tag and GitHub Release if you want GitHub to retain old downloadable versions.
 
 ## Archive policy
 
@@ -70,4 +76,4 @@ Old public files can stay available unless a release is broken or unsafe. Prefer
 
 ## Future automation
 
-A dedicated package script can make the staging and zip steps repeatable once the manual process and project metadata are stable.
+Release packaging is handled by [`../tools/package_release.ps1`](../tools/package_release.ps1), which runs [`../tools/prepare_mod.ps1`](../tools/prepare_mod.ps1) and writes `dist\AutoReadMod-<version>.zip`.

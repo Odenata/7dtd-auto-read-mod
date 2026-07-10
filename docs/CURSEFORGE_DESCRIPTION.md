@@ -10,13 +10,19 @@ Auto Read Mod automatically reads books, magazines, schematics, and recipes when
 
 ## Installation
 
-Extract the release zip into your 7 Days to Die `Mods` folder so the files are under:
+1. **Disable Easy Anti-Cheat (EAC).** This is a Harmony DLL mod; EAC must be off.
+2. Extract the release zip into your 7 Days to Die `Mods` folder. After extraction, **`Mods\AutoReadMod\`** must contain exactly:
 
 ```text
 Mods\AutoReadMod\
+  AutoReadMod.dll
+  ModInfo.xml
+  Config.xml
 ```
 
-Easy Anti-Cheat must be disabled because this is a Harmony DLL mod.
+There is **no** nested `Config\` folder — `Config.xml` sits next to the DLL. Do **not** add `0Harmony.dll` here; the game provides Harmony via **`Mods\0_TFP_Harmony`**.
+
+3. **Multiplayer:** install the **same mod version** on the server and every client.
 
 ## Configuration
 

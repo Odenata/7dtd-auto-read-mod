@@ -10,7 +10,8 @@ namespace AutoReadMod
         private static int _nextLootReadDebugId;
         private static Dictionary<string, SyntheticReadableEffects> _cachedReadableEffectsByItemName;
         private static bool _readableEffectsCacheLoaded;
-        private static readonly Random NerdBonusRandom = new Random();
+        private static readonly object NerdBonusRandomGate = new object();
+        private static Random NerdBonusRandom = new Random();
 
         static AutoReader()
         {
@@ -233,12 +234,57 @@ namespace AutoReadMod
                     consumeCount,
                     AutoReadVisualizationSource.Bundle,
                     updatedStack =>
-                {
-                    GameReflection.SetBagItem(bag, slotIndex, updatedStack);
-                },
+                    {
+                        GameReflection.SetBagItem(bag, slotIndex, updatedStack);
+                    },
                     itemSlotIndex: slotIndex,
                     lootWindowGroup: null,
                     bundleReadFromBag: true);
+            }
+        }
+
+        /// <summary>
+        /// v3 entity loot (death bags, zombie bags, <c>EntityLootContainer</c>) uses <see cref="Bag"/> +
+        /// <c>XUiC_BagContainer</c>, not <see cref="ITileEntityLootable"/>. Same synthetic open-loot consume path
+        /// as tile chests so player inventory/toolbelt is never treated as the read target.
+        /// </summary>
+        public static void ProcessEntityLootBag(EntityPlayer player, Bag bag, XUiC_BagContainer bagContainer = null)
+        {
+            DebugLog($"ProcessEntityLootBag called, Enabled={ModConfig.Instance.Enabled}");
+
+            if (!ModConfig.Instance.Enabled)
+            {
+                DebugLog("Mod is disabled in config");
+                return;
+            }
+
+            var slots = GameReflection.GetBagSlots(bag);
+            if (player == null || slots == null)
+            {
+                DebugLog($"Null check failed: player={player != null}, slots={slots != null}");
+                return;
+            }
+
+            var itemsToRead = FindReadableSlotIndices(slots);
+            DebugLog($"Found {itemsToRead.Count} readable items in entity loot bag");
+
+            for (int i = itemsToRead.Count - 1; i >= 0; i--)
+            {
+                int slotIndex = itemsToRead[i];
+                var itemStack = slots[slotIndex];
+                ReadStack(
+                    player,
+                    itemStack,
+                    GameReflection.GetItemCount(itemStack),
+                    AutoReadVisualizationSource.Container,
+                    updatedStack =>
+                    {
+                        GameReflection.SetBagItem(bag, slotIndex, updatedStack);
+                    },
+                    itemSlotIndex: slotIndex,
+                    lootWindowGroup: null,
+                    bundleReadFromBag: false,
+                    readingFromOpenContainer: true);
             }
         }
 
@@ -404,7 +450,8 @@ namespace AutoReadMod
             Action<ItemStack> updateStack,
             int itemSlotIndex = -1,
             XUiC_LootWindowGroup lootWindowGroup = null,
-            bool bundleReadFromBag = false)
+            bool bundleReadFromBag = false,
+            bool readingFromOpenContainer = false)
         {
             var itemValue = GameReflection.GetItemValue(itemStack);
             var itemClass = GameReflection.GetItemClass(itemValue);
@@ -421,6 +468,7 @@ namespace AutoReadMod
             }
 
             var itemName = itemClass.GetLocalizedItemName();
+            var openContainerRead = readingFromOpenContainer || lootWindowGroup != null;
 
             SafeLog($"AutoReadMod: {player?.EntityName ?? "player"} reading {targetCount}x {itemName}");
 
@@ -428,7 +476,7 @@ namespace AutoReadMod
             {
                 LogHypothesis(
                     $"ReadStack: item={itemName} currentCount={currentCount} targetCount={targetCount} slot={itemSlotIndex} source={source} playerType={player?.GetType().Name ?? "null"}");
-                var lootReadDebugId = lootWindowGroup != null ? NextLootReadDebugId() : 0;
+                var lootReadDebugId = openContainerRead ? NextLootReadDebugId() : 0;
                 if (lootReadDebugId != 0)
                 {
                     LogLootSnapshot(lootReadDebugId, $"ReadStack.begin slot={itemSlotIndex} item={itemName}", player, itemStack);
@@ -436,7 +484,7 @@ namespace AutoReadMod
 
                 // Loot eat/instant paths must not receive XUiC_ItemStack (vanilla maps it to player slots — toolbelt slot 0 bug).
                 XUiC_ItemStack lootSlotController = null;
-                if (lootWindowGroup != null)
+                if (openContainerRead)
                 {
                     LogHypothesis(
                         $"ReadStack: open loot slot={itemSlotIndex} — omit slot controller from ApplyReadableEffects (tile ItemStack only)");
@@ -470,7 +518,8 @@ namespace AutoReadMod
                     itemSlotIndex,
                     lootSlotController,
                     lootWindowGroup,
-                    lootReadDebugId);
+                    lootReadDebugId,
+                    readingFromOpenContainer: openContainerRead);
                 DebugLog($"Consumed {successfulConsumes}/{targetCount}x {itemName}, now updating slot");
                 if (lootReadDebugId != 0)
                 {
@@ -487,7 +536,7 @@ namespace AutoReadMod
                 // until the container slot update below. Some generated loot grids still expose the stale UI count
                 // here; trusting it re-adds already learned items to non-Untouched containers.
                 int remaining;
-                if (lootWindowGroup != null)
+                if (openContainerRead)
                 {
                     remaining = Math.Max(0, currentCount - successfulConsumes);
                 }
@@ -549,6 +598,79 @@ namespace AutoReadMod
             return ApplyReadableEffects(player, itemStack, consumeCount, itemSlotIndex, lootSlotController, lootWindowGroup, 0);
         }
 
+        /// <summary>Hermetic tests for magazine double-point CVar resolution (Nerd Outfit / INT Mastery).</summary>
+        internal static bool TryResolveMagazineDoublePointChanceForTest(
+            EntityAlive entity,
+            out float chancePercent,
+            out string chanceCVarName)
+        {
+            return TryResolveMagazineDoublePointChance(entity, out chancePercent, out chanceCVarName);
+        }
+
+        /// <summary>Hermetic tests for Nerd Outfit / INT Mastery eligibility gate.</summary>
+        internal static bool IsEligibleForMagazineDoublePointBonusForTest(EntityAlive entity)
+        {
+            return IsEligibleForMagazineDoublePointBonus(entity);
+        }
+
+        /// <summary>
+        /// Hermetic tests: apply magazine double-point bonus with a deterministic RNG seed
+        /// (seed 0 yields roll≈0 so chance ≥ 1 always grants).
+        /// </summary>
+        internal static void ApplyMagazineDoublePointBonusForTest(
+            EntityAlive entity,
+            string[] progressionNames,
+            int consumedUnits,
+            int randomSeed)
+        {
+            lock (NerdBonusRandomGate)
+            {
+                var previous = NerdBonusRandom;
+                NerdBonusRandom = new Random(randomSeed);
+                try
+                {
+                    ApplyMagazineDoublePointBonusFromGameCVar(
+                        entity,
+                        progressionNames,
+                        consumedUnits,
+                        "testMagazine",
+                        1,
+                        "test",
+                        null);
+                }
+                finally
+                {
+                    NerdBonusRandom = previous;
+                }
+            }
+        }
+
+        /// <summary>Hermetic tests: inject XML-style synthetic readable effects for an item name.</summary>
+        internal static void SetSyntheticReadableEffectsForTest(
+            string itemName,
+            string[] addProgressionNames = null,
+            string[] maxProgressionNames = null,
+            string[] setCVarNames = null)
+        {
+            if (string.IsNullOrWhiteSpace(itemName))
+            {
+                return;
+            }
+
+            var cache = EnsureReadableEffectsCache();
+            cache[itemName] = new SyntheticReadableEffects(
+                addProgressionNames ?? new string[0],
+                maxProgressionNames ?? new string[0],
+                setCVarNames ?? new string[0]);
+        }
+
+        /// <summary>Hermetic tests: clear synthetic readable-effects cache.</summary>
+        internal static void ClearSyntheticReadableEffectsCacheForTest()
+        {
+            _cachedReadableEffectsByItemName = null;
+            _readableEffectsCacheLoaded = false;
+        }
+
         private static int ApplyReadableEffects(
             EntityPlayer player,
             ItemStack itemStack,
@@ -556,7 +678,8 @@ namespace AutoReadMod
             int itemSlotIndex = -1,
             XUiC_ItemStack lootSlotController = null,
             XUiC_LootWindowGroup lootWindowGroup = null,
-            int lootReadDebugId = 0)
+            int lootReadDebugId = 0,
+            bool readingFromOpenContainer = false)
         {
             var itemValue = GameReflection.GetItemValue(itemStack);
             var itemClass = GameReflection.GetItemClass(itemValue);
@@ -653,13 +776,14 @@ namespace AutoReadMod
                 return 0;
             }
 
-            // Tile loot (loot UI open): never pass loot grid indices as player toolbelt/inventory slotIdx (toolbelt corruption + cast spam).
-            // Use -1 for consume/GainSkill/LearnRecipe ItemInventoryData; run ItemActionLearnRecipe / CraftingManager fallback after Eat succeeds.
+            // Tile loot / entity bag loot (UI open): never pass loot grid indices as player toolbelt/inventory slotIdx
+            // (toolbelt corruption + cast spam). Use -1 for consume/GainSkill/LearnRecipe ItemInventoryData; run
+            // ItemActionLearnRecipe / CraftingManager fallback after Eat succeeds.
             //
             // Never pass loot XUiC_ItemStack into ItemActionEat.ExecuteInstantAction / eat paths: vanilla uses that controller to resolve
             // *player* inventory slots. Even when ItemStack args reference the tile entity, slot 0 controllers often map to the toolbelt and
-            // consume hotbar slot 0 (e.g. axe). Only mutate the tile backing ItemStack passed into this method.
-            var readingFromOpenLoot = lootWindowGroup != null;
+            // consume hotbar slot 0 (e.g. axe). Only mutate the tile/bag backing ItemStack passed into this method.
+            var readingFromOpenLoot = readingFromOpenContainer || lootWindowGroup != null;
             if (readingFromOpenLoot)
             {
                 lootSlotController = null;
@@ -694,9 +818,7 @@ namespace AutoReadMod
             DebugLog(
                 $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} (slotIdx={itemSlotIndex}, consumeSlot={slotForConsumeAndSkills}), lootUiEatCtrl={(lootSlotController == null ? "no" : "yes")}, Eat/GainSkill/LearnRecipe/FireEvent paths");
 
-            var xmlReadableEffects = readingFromOpenLoot
-                ? ResolveSyntheticReadableEffects(itemClass)
-                : SyntheticReadableEffects.Empty;
+            var xmlReadableEffects = ResolveSyntheticReadableEffects(itemClass);
             var xmlProgressionEffectsOwnLearning = readingFromOpenLoot &&
                                                    (xmlReadableEffects.AddProgressionNames.Length > 0 ||
                                                     xmlReadableEffects.MaxProgressionNames.Length > 0);
@@ -704,11 +826,11 @@ namespace AutoReadMod
                                                IsSkillMagazineItemClass(itemClass) &&
                                                xmlReadableEffects.AddProgressionNames.Length > 0;
             var progressionNames = ResolveGainSkillProgressionNames(gainSkillAction, itemClass, xmlReadableEffects);
-            if (gainSkillAction != null || readingFromOpenLoot)
+            if (gainSkillAction != null || readingFromOpenLoot || ModConfig.Instance.SkipAlreadyRead)
             {
                 LogHypothesis(
                     $"ApplyReadableEffects: resolved gain-skill progressions for {itemName}: {(progressionNames.Length == 0 ? "(none)" : string.Join(",", progressionNames))}");
-                if (readingFromOpenLoot && xmlReadableEffects.HasAny)
+                if (xmlReadableEffects.HasAny)
                 {
                     LogHypothesis(
                         $"ApplyReadableEffects: XML synthetic effects for {itemName}: add=[{string.Join(",", xmlReadableEffects.AddProgressionNames)}] max=[{string.Join(",", xmlReadableEffects.MaxProgressionNames)}] cvar=[{string.Join(",", xmlReadableEffects.SetCVarNames)}]");
@@ -728,11 +850,30 @@ namespace AutoReadMod
                 : CaptureCraftingProgressionSnapshot(player, progressionNames);
 
             int successfulConsumes = 0;
+            var itemKindForSkip = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
 
             for (int i = 0; i < effectiveCount; i++)
             {
                 if (successfulConsumes >= effectiveCount)
                 {
+                    break;
+                }
+
+                if (ModConfig.Instance.SkipAlreadyRead &&
+                    ShouldSkipReadableUnit(
+                        effectEntity,
+                        player,
+                        gameManager,
+                        itemClass,
+                        itemActions,
+                        itemKindForSkip,
+                        progressionNames,
+                        xmlReadableEffects,
+                        gainSkillAction,
+                        learnRecipeAction))
+                {
+                    LogHypothesis(
+                        $"ApplyReadableEffects: SkipAlreadyRead — stop at unit {i + 1}/{effectiveCount} for {itemName} (no remaining benefit)");
                     break;
                 }
 
@@ -1038,7 +1179,7 @@ namespace AutoReadMod
                             effectEntityOpenLootEventBaseline);
                         if (shouldFireOpenLootItemEvents)
                         {
-                            ApplyNerdOutfitMagazineBonusFromGameCVar(
+                            ApplyMagazineDoublePointBonusFromGameCVar(
                                 effectEntity,
                                 xmlReadableEffects.AddProgressionNames,
                                 consumedThisUnit,
@@ -1059,7 +1200,7 @@ namespace AutoReadMod
                                 "context player");
                             if (shouldFireOpenLootItemEvents)
                             {
-                                ApplyNerdOutfitMagazineBonusFromGameCVar(
+                                ApplyMagazineDoublePointBonusFromGameCVar(
                                     player,
                                     xmlReadableEffects.AddProgressionNames,
                                     consumedThisUnit,
@@ -2160,7 +2301,12 @@ namespace AutoReadMod
             }
         }
 
-        private static void ApplyNerdOutfitMagazineBonusFromGameCVar(
+        /// <summary>
+        /// Magazine double skill-point roll for Nerd Outfit and/or INT Mastery Photographic Memory.
+        /// Vanilla merges both into <c>$nerdOutfitSkillPointChance</c>; INT-only players may only have
+        /// <c>$perkIntellectMasteryPointChance</c> populated.
+        /// </summary>
+        private static void ApplyMagazineDoublePointBonusFromGameCVar(
             EntityAlive entity,
             string[] progressionNames,
             int consumedUnits,
@@ -2174,16 +2320,18 @@ namespace AutoReadMod
                 return;
             }
 
-            var chanceCVarName = "$nerdOutfitSkillPointChance";
-            if (!TryGetEntityCVar(entity, chanceCVarName, out var chancePercent) || chancePercent <= 0f)
+            if (!IsEligibleForMagazineDoublePointBonus(entity))
             {
-                chanceCVarName = "nerdOutfitSkillPointChance";
-                TryGetEntityCVar(entity, chanceCVarName, out chancePercent);
+                LogHypothesis(
+                    $"MagDoublePoint [{unitIndex}] {itemName}: skipped on {targetLabel} (no buffNerdOutfit and perkIntellectMastery < 3)");
+                return;
             }
 
-            if (chancePercent <= 0f)
+            if (!TryResolveMagazineDoublePointChance(entity, out var chancePercent, out var chanceCVarName) ||
+                chancePercent <= 0f)
             {
-                LogHypothesis($"NerdBonus [{unitIndex}] {itemName}: skipped on {targetLabel} ($nerdOutfitSkillPointChance/nerdOutfitSkillPointChance={chancePercent:0.###})");
+                LogHypothesis(
+                    $"MagDoublePoint [{unitIndex}] {itemName}: skipped on {targetLabel} (no positive chance CVar)");
                 return;
             }
 
@@ -2209,12 +2357,12 @@ namespace AutoReadMod
                     before > baseLevel + consumedUnits)
                 {
                     LogHypothesis(
-                        $"NerdBonus [{unitIndex}] {itemName}: skipped {skill} on {targetLabel}; game event already granted extra ({baseLevel}->{before})");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: skipped {skill} on {targetLabel}; game event already granted extra ({baseLevel}->{before})");
                     continue;
                 }
 
                 double roll;
-                lock (NerdBonusRandom)
+                lock (NerdBonusRandomGate)
                 {
                     roll = NerdBonusRandom.NextDouble() * 100.0;
                 }
@@ -2222,7 +2370,7 @@ namespace AutoReadMod
                 if (roll > chancePercent)
                 {
                     LogHypothesis(
-                        $"NerdBonus [{unitIndex}] {itemName}: missed {skill} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: missed {skill} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
                     continue;
                 }
 
@@ -2235,19 +2383,365 @@ namespace AutoReadMod
                 if (minEventOk && after > before)
                 {
                     LogHypothesis(
-                        $"NerdBonus [{unitIndex}] {itemName}: granted {skill} {before}->{after} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: granted {skill} {before}->{after} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
                 }
                 else if (TrySetProgressionLevel(entity, skill, before + 1))
                 {
                     LogHypothesis(
-                        $"NerdBonus [{unitIndex}] {itemName}: fallback granted {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: fallback granted {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
                 }
                 else
                 {
                     LogHypothesis(
-                        $"NerdBonus [{unitIndex}] {itemName}: failed grant {skill} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: failed grant {skill} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
                 }
             }
+        }
+
+        private static bool IsEligibleForMagazineDoublePointBonus(EntityAlive entity)
+        {
+            if (entity == null)
+            {
+                return false;
+            }
+
+            if (EntityHasBuff(entity, "buffNerdOutfit"))
+            {
+                return true;
+            }
+
+            return GetProgressionLevel(entity, "perkIntellectMastery") >= 3;
+        }
+
+        private static bool TryResolveMagazineDoublePointChance(
+            EntityAlive entity,
+            out float chancePercent,
+            out string chanceCVarName)
+        {
+            chancePercent = 0f;
+            chanceCVarName = "$nerdOutfitSkillPointChance";
+            if (TryGetEntityCVar(entity, chanceCVarName, out chancePercent) && chancePercent > 0f)
+            {
+                return true;
+            }
+
+            chanceCVarName = "nerdOutfitSkillPointChance";
+            if (TryGetEntityCVar(entity, chanceCVarName, out chancePercent) && chancePercent > 0f)
+            {
+                return true;
+            }
+
+            if (GetProgressionLevel(entity, "perkIntellectMastery") >= 3)
+            {
+                chanceCVarName = "$perkIntellectMasteryPointChance";
+                if (TryGetEntityCVar(entity, chanceCVarName, out chancePercent) && chancePercent > 0f)
+                {
+                    return true;
+                }
+
+                chanceCVarName = "perkIntellectMasteryPointChance";
+                if (TryGetEntityCVar(entity, chanceCVarName, out chancePercent) && chancePercent > 0f)
+                {
+                    return true;
+                }
+            }
+
+            chancePercent = 0f;
+            return false;
+        }
+
+        private static bool EntityHasBuff(EntityAlive entity, string buffName)
+        {
+            if (entity == null || string.IsNullOrWhiteSpace(buffName))
+            {
+                return false;
+            }
+
+            try
+            {
+                var buffs = GameReflection.GetMemberValue<object>(entity, "Buffs")
+                            ?? GameReflection.GetMemberValue<object>(entity, "buffs");
+                if (buffs == null)
+                {
+                    return false;
+                }
+
+                if (GameReflection.TryInvokeInstanceMethod(buffs, "HasBuff", out var hasBuffResult, buffName) &&
+                    hasBuffResult is bool hasBuff)
+                {
+                    return hasBuff;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// When <see cref="ModConfig.SkipAlreadyRead"/> is on: true if this unit would grant no progression/recipe benefit.
+        /// Unresolved names / missing CraftingManager → false (do not skip).
+        /// </summary>
+        private static bool ShouldSkipReadableUnit(
+            EntityAlive effectEntity,
+            EntityPlayer player,
+            object gameManager,
+            ItemClass itemClass,
+            System.Array itemActions,
+            ReadableItemKind itemKind,
+            string[] progressionNames,
+            SyntheticReadableEffects xmlReadableEffects,
+            object gainSkillAction,
+            object learnRecipeAction)
+        {
+            if (effectEntity == null)
+            {
+                return false;
+            }
+
+            var effects = xmlReadableEffects ?? SyntheticReadableEffects.Empty;
+
+            switch (itemKind)
+            {
+                case ReadableItemKind.Magazine:
+                    return AreAllAddProgressionsAtMax(effectEntity, progressionNames, effects.AddProgressionNames);
+
+                case ReadableItemKind.Book:
+                    return IsBookAlreadyRead(effectEntity, effects);
+
+                case ReadableItemKind.Schematic:
+                case ReadableItemKind.Recipe:
+                    return IsSchematicAlreadyKnown(player, gameManager, itemClass, itemActions, learnRecipeAction, effects);
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool AreAllAddProgressionsAtMax(
+            EntityAlive entity,
+            string[] progressionNames,
+            string[] xmlAddProgressionNames)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (progressionNames != null)
+            {
+                for (var i = 0; i < progressionNames.Length; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(progressionNames[i]))
+                    {
+                        names.Add(progressionNames[i]);
+                    }
+                }
+            }
+
+            if (xmlAddProgressionNames != null)
+            {
+                for (var i = 0; i < xmlAddProgressionNames.Length; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(xmlAddProgressionNames[i]))
+                    {
+                        names.Add(xmlAddProgressionNames[i]);
+                    }
+                }
+            }
+
+            if (names.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var skill in names)
+            {
+                // Magazines: only skip when max is known and reached. Unknown max → do not skip.
+                if (!IsProgressionAtKnownMax(entity, skill))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsBookAlreadyRead(EntityAlive entity, SyntheticReadableEffects effects)
+        {
+            if (effects == null)
+            {
+                return false;
+            }
+
+            var hasMax = effects.MaxProgressionNames != null && effects.MaxProgressionNames.Length > 0;
+            var hasCVars = effects.SetCVarNames != null && effects.SetCVarNames.Length > 0;
+            if (!hasMax && !hasCVars)
+            {
+                return false;
+            }
+
+            if (hasMax)
+            {
+                for (var i = 0; i < effects.MaxProgressionNames.Length; i++)
+                {
+                    var skill = effects.MaxProgressionNames[i];
+                    if (string.IsNullOrWhiteSpace(skill))
+                    {
+                        continue;
+                    }
+
+                    // Book perks are usually max_level=1; if max cannot be resolved, level ≥ 1 means unlocked.
+                    if (!IsBookProgressionAlreadyUnlocked(entity, skill))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            if (hasCVars)
+            {
+                for (var i = 0; i < effects.SetCVarNames.Length; i++)
+                {
+                    var cvar = effects.SetCVarNames[i];
+                    if (string.IsNullOrWhiteSpace(cvar))
+                    {
+                        continue;
+                    }
+
+                    if (!TryGetEntityCVar(entity, cvar, out var value) || value < 1f)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsProgressionAtKnownMax(EntityAlive entity, string skill)
+        {
+            var pv = GetProgressionValue(entity, skill);
+            var level = GetProgressionLevel(entity, skill);
+            var max = TryGetProgressionMaxLevel(pv, entity);
+            return max > 0 && level >= max;
+        }
+
+        private static bool IsBookProgressionAlreadyUnlocked(EntityAlive entity, string skill)
+        {
+            var pv = GetProgressionValue(entity, skill);
+            var level = GetProgressionLevel(entity, skill);
+            var max = TryGetProgressionMaxLevel(pv, entity);
+            if (max > 0)
+            {
+                return level >= max;
+            }
+
+            return level >= 1;
+        }
+
+        private static bool IsSchematicAlreadyKnown(
+            EntityPlayer player,
+            object gameManager,
+            ItemClass itemClass,
+            System.Array itemActions,
+            object learnRecipeAction,
+            SyntheticReadableEffects effects)
+        {
+            // Vanilla mod/schematic items usually unlock via CVar (Unlocks / ModifyCVar), not CraftingManager.
+            // Check CVars first so name heuristics cannot force a false CraftingManager miss.
+            if (AreAllSchematicCVarsKnown(player, effects))
+            {
+                return true;
+            }
+
+            // Prefer explicit LearnRecipe action recipes over name heuristics.
+            var recipeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (learnRecipeAction != null)
+            {
+                CollectRecipesToLearnFromLearnRecipeAction(learnRecipeAction, recipeNames);
+            }
+
+            if (itemActions != null)
+            {
+                for (var ai = 0; ai < itemActions.Length; ai++)
+                {
+                    var action = itemActions.GetValue(ai);
+                    if (action == null || action.GetType().Name != "ItemActionLearnRecipe")
+                    {
+                        continue;
+                    }
+
+                    CollectRecipesToLearnFromLearnRecipeAction(action, recipeNames);
+                }
+            }
+
+            var hadExplicitRecipes = recipeNames.Count > 0;
+            if (!hadExplicitRecipes)
+            {
+                AddSchematicRecipeNameHeuristics(itemClass, recipeNames);
+            }
+
+            if (recipeNames.Count == 0)
+            {
+                return false;
+            }
+
+            var unlockPlayer = GameReflection.TryGetLocalEntityPlayer() ?? player;
+            var craftingManager = GameReflection.TryResolveCraftingManager(gameManager, unlockPlayer);
+            if (craftingManager == null)
+            {
+                return false;
+            }
+
+            var unlocked = GameReflection.GetMemberValue<object>(craftingManager, "UnlockedRecipeList") as System.Collections.IEnumerable;
+            if (unlocked == null)
+            {
+                return false;
+            }
+
+            var unlockedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in unlocked)
+            {
+                if (entry is string s && !string.IsNullOrWhiteSpace(s))
+                {
+                    unlockedSet.Add(s);
+                }
+            }
+
+            foreach (var recipe in recipeNames)
+            {
+                if (string.IsNullOrWhiteSpace(recipe) || !unlockedSet.Contains(recipe))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool AreAllSchematicCVarsKnown(EntityAlive entity, SyntheticReadableEffects effects)
+        {
+            if (entity == null || effects?.SetCVarNames == null || effects.SetCVarNames.Length == 0)
+            {
+                return false;
+            }
+
+            var sawAny = false;
+            for (var i = 0; i < effects.SetCVarNames.Length; i++)
+            {
+                var cvar = effects.SetCVarNames[i];
+                if (string.IsNullOrWhiteSpace(cvar))
+                {
+                    continue;
+                }
+
+                sawAny = true;
+                if (!TryGetEntityCVar(entity, cvar, out var value) || value < 1f)
+                {
+                    return false;
+                }
+            }
+
+            return sawAny;
         }
 
         private static bool TryExecuteProgressionLevelMinEvent(
@@ -2596,10 +3090,11 @@ namespace AutoReadMod
 
             foreach (XmlElement effectGroup in item.SelectNodes("effect_group"))
             {
-                if (HasChildElement(effectGroup))
+                // Skip conditional groups (requirement / requirement_group on the effect_group itself).
+                // Nested requirements on individual triggered_effect nodes are fine — those are still
+                // the item's primary unlock effects in vanilla books (ProgressionLevel Equals 0).
+                if (EffectGroupHasTopLevelRequirement(effectGroup))
                 {
-                    // Requirement groups make the effect conditional (e.g. Nerd Outfit bonus rolls). Keep
-                    // synthetic learning to the unconditional read effects only.
                     continue;
                 }
 
@@ -2633,16 +3128,22 @@ namespace AutoReadMod
             }
         }
 
-        private static bool HasChildElement(XmlElement element)
+        private static bool EffectGroupHasTopLevelRequirement(XmlElement effectGroup)
         {
-            if (element == null)
+            if (effectGroup == null)
             {
                 return false;
             }
 
-            for (var i = 0; i < element.ChildNodes.Count; i++)
+            for (var i = 0; i < effectGroup.ChildNodes.Count; i++)
             {
-                if (element.ChildNodes[i] is XmlElement)
+                if (!(effectGroup.ChildNodes[i] is XmlElement child))
+                {
+                    continue;
+                }
+
+                if (string.Equals(child.Name, "requirement", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(child.Name, "requirement_group", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -3124,6 +3625,12 @@ namespace AutoReadMod
                 catch
                 {
                     // fall through
+                }
+
+                var declaredMax = GameReflection.GetMemberValue<int>(progressionClass, "MaxLevel");
+                if (declaredMax > 0)
+                {
+                    return declaredMax;
                 }
             }
 

@@ -15,6 +15,12 @@ namespace AutoReadMod
         private static readonly object LootDebugFileLock = new object();
         private static string _lootDebugFilePath;
 
+        /// <summary>Hermetic tests: drop cached CraftingManager so a fresh Instance is resolved.</summary>
+        internal static void ClearCraftingManagerCacheForTest()
+        {
+            _cachedCraftingManagerForSession = null;
+        }
+
         private sealed class ReferenceIdentityEqualityComparer : IEqualityComparer<object>
         {
             bool IEqualityComparer<object>.Equals(object x, object y) => ReferenceEquals(x, y);
@@ -46,6 +52,58 @@ namespace AutoReadMod
             catch
             {
                 return null;
+            }
+        }
+
+        internal static EntityPlayer GetPlayerFromBagContainer(XUiC_BagContainer bagContainer)
+        {
+            if (bagContainer == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var xui = GetMemberValue<object>(bagContainer, "xui");
+                var playerUi = GetMemberValue<object>(xui, "playerUI");
+                return GetMemberValue<EntityPlayer>(playerUi, "entityPlayer");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Rebind bag slot controllers from the entity loot <see cref="Bag"/> after auto-read mutates slots.
+        /// Uses vanilla <c>SetStacks</c> (same family as <see cref="XUiC_BagContainer.SetBag"/>).
+        /// </summary>
+        internal static void RefreshBagContainerUiFromBag(XUiC_BagContainer bagContainer, Bag bag)
+        {
+            if (bagContainer == null || bag == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var slots = GetBagSlots(bag);
+                var setStacks = bagContainer.GetType().GetMethod(
+                    "SetStacks",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(ItemStack[]) },
+                    null);
+                if (setStacks != null)
+                {
+                    setStacks.Invoke(bagContainer, new object[] { slots });
+                }
+
+                SyncLootGridItemControllers(bagContainer, slots);
+            }
+            catch
+            {
+                // best-effort UI sync
             }
         }
 

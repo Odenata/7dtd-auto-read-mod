@@ -1,7 +1,7 @@
 diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 --- a/mocks/GameClasses.cs
 +++ b/mocks/GameClasses.cs
-@@ -1,90 +1,403 @@
+@@ -1,90 +1,523 @@
 -// Mock game classes - API signatures only, no implementation
 -// Based on documented API from docs/GAME_API.md
 -
@@ -228,6 +228,45 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +        if (hasReadableStack && hasEventParams)
 +        {
 +            AppliedSkillCalls++;
++            var skills = SkillsToGain;
++            var entity = actionData?.invData?.holdingEntity;
++            if (skills != null && entity?.Progression != null)
++            {
++                for (var i = 0; i < skills.Length; i++)
++                {
++                    var skill = skills[i];
++                    if (string.IsNullOrWhiteSpace(skill)) continue;
++                    var pv = entity.Progression.GetProgressionValue(skill);
++                    if (pv == null) continue;
++                    var next = System.Math.Min(pv.Level + 1, pv.CalculatedMaxLevel(entity));
++                    pv.Level = next;
++                    pv.level = next;
++                }
++            }
++        }
++    }
++}
++
++public class ItemActionLearnRecipe : ItemActionBase
++{
++    public string[] RecipesToLearn { get; set; }
++    public int ExecuteActionCalls;
++
++    public ItemActionData CreateModifierData(ItemInventoryData invData, int indexInEntityOfAction)
++    {
++        return new ItemActionData(invData, indexInEntityOfAction);
++    }
++
++    public void ExecuteAction(ItemActionData actionData, bool released)
++    {
++        ExecuteActionCalls++;
++        var recipes = RecipesToLearn;
++        if (recipes == null) return;
++        var player = actionData?.invData?.holdingEntity as EntityPlayer;
++        for (var i = 0; i < recipes.Length; i++)
++        {
++            if (!string.IsNullOrWhiteSpace(recipes[i]))
++                CraftingManager.Instance?.UnlockRecipe(recipes[i], player);
 +        }
 +    }
 +}
@@ -328,8 +367,9 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public int Level { get; set; }
 +    public int level { get; set; }
 +    public float calculatedLevel { get; set; }
++    public int MaxLevelOverride { get; set; } = 100;
 +    public int CalculatedLevel(EntityAlive _ea) => System.Math.Max(Level, level);
-+    public int CalculatedMaxLevel(EntityAlive _ea) => 100;
++    public int CalculatedMaxLevel(EntityAlive _ea) => MaxLevelOverride;
 +}
 +
 +public class Inventory
@@ -354,6 +394,11 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +public class Bag
 +{
 +    private ItemStack[] _slots = System.Array.Empty<ItemStack>();
++    public ItemStack[] items
++    {
++        get => _slots;
++        set => _slots = value ?? System.Array.Empty<ItemStack>();
++    }
 +    public ItemStack[] GetSlots() => _slots ?? System.Array.Empty<ItemStack>();
 +    public void SetSlot(int idx, ItemStack itemStack, bool _callChangedEvent)
 +    {
@@ -362,6 +407,10 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +        _slots[idx] = itemStack;
 +    }
 +    public void SetSlots(ItemStack[] slots) { _slots = slots ?? System.Array.Empty<ItemStack>(); }
++}
++
++public class LootContainer
++{
 +}
 +
 +public interface ITileEntity { }
@@ -389,8 +438,51 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +    public Inventory inventory { get; set; }
 +    public Bag bag { get; set; }
 +    public Progression Progression { get; set; } = new Progression();
++    public EntityBuffs Buffs { get; set; } = new EntityBuffs();
++
++    private readonly System.Collections.Generic.Dictionary<string, float> _cvars =
++        new System.Collections.Generic.Dictionary<string, float>(System.StringComparer.OrdinalIgnoreCase);
 +
 +    public EntityAlive() { }
++
++    public float GetCVar(string varName)
++    {
++        if (string.IsNullOrWhiteSpace(varName)) return 0f;
++        return _cvars.TryGetValue(varName, out var value) ? value : 0f;
++    }
++
++    public void SetCVar(string varName, float value)
++    {
++        if (string.IsNullOrWhiteSpace(varName)) return;
++        _cvars[varName] = value;
++    }
++}
++
++public class EntityBuffs
++{
++    private readonly System.Collections.Generic.Dictionary<string, bool> _buffs =
++        new System.Collections.Generic.Dictionary<string, bool>(System.StringComparer.OrdinalIgnoreCase);
++
++    public bool HasBuff(string name) =>
++        !string.IsNullOrWhiteSpace(name) && _buffs.ContainsKey(name);
++
++    public void AddBuff(string name)
++    {
++        if (!string.IsNullOrWhiteSpace(name)) _buffs[name] = true;
++    }
++}
++
++public class CraftingManager
++{
++    public static CraftingManager Instance { get; set; } = new CraftingManager();
++    public System.Collections.Generic.List<string> UnlockedRecipeList { get; set; } =
++        new System.Collections.Generic.List<string>();
++
++    public void UnlockRecipe(string recipeName, EntityPlayer player)
++    {
++        if (!string.IsNullOrWhiteSpace(recipeName) && !UnlockedRecipeList.Contains(recipeName))
++            UnlockedRecipeList.Add(recipeName);
++    }
 +}
 +
 +public class EntityPlayer : EntityAlive
@@ -480,6 +572,34 @@ diff --git a/mocks/GameClasses.cs b/mocks/GameClasses.cs
 +            SetSlots(lootable, items);
 +        }
 +    }
++}
++
++public class XUiC_BagContainer : XUiC_ItemStackGrid
++{
++    public Bag Bag { get; set; }
++    public XUi xui { get; set; }
++    public PlayerUI playerUI { get; set; }
++
++    public void SetBag(Bag bag, LootContainer lootContainer, string containerName, System.Action onModified)
++    {
++        Bag = bag;
++        SetStacks(bag?.GetSlots());
++    }
++
++    public void SetStacks(ItemStack[] stackList)
++    {
++        if (stackList == null || itemControllers == null) return;
++        var length = System.Math.Min(stackList.Length, itemControllers.Length);
++        for (var i = 0; i < length; i++)
++        {
++            var controller = itemControllers[i];
++            if (controller == null) continue;
++            var stack = stackList[i];
++            controller.ForceSetItemStack(stack == null || stack.IsEmpty() ? ItemStack.Empty : stack);
++        }
++    }
++
++    public void OnOpen() { }
 +}
 +
 +// --- Mod API ---

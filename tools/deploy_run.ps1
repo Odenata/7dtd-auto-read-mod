@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 Write-Host ""
 Write-Host "WARNING: This deploy is NOT hermetic. Bazel does not control:" -ForegroundColor Yellow
 Write-Host "  - Game install directory (env 7_DAYS_TO_DIE_GAME_PATH or default Steam path)" -ForegroundColor Yellow
-Write-Host "  - 0Harmony.dll from sibling repo 7dtd-mod-dev-tools" -ForegroundColor Yellow
+Write-Host "  - Official Mods\0_TFP_Harmony (required at runtime; not copied by this script)" -ForegroundColor Yellow
 Write-Host "  - Mod repo files (ModInfo.xml, Config.xml)" -ForegroundColor Yellow
 Write-Host ""
 

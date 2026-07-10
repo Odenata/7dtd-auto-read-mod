@@ -6,19 +6,23 @@ Release zip names use the **mod version**. See [`docs/COMPATIBILITY.md`](docs/CO
 
 ## Install
 
-1. Turn Easy Anti-Cheat off. Harmony DLL mods require EAC disabled.
-2. Extract the release zip into your 7 Days to Die `Mods` folder.
-3. Verify this layout:
+1. **Disable Easy Anti-Cheat (EAC).** Harmony DLL mods require EAC off for both single-player and multiplayer.
+2. Extract the release zip into your 7 Days to Die `Mods` folder so **`Mods\AutoReadMod\`** contains exactly these three files — no extra subfolders:
 
 ```text
 <7 Days To Die>\Mods\AutoReadMod\
-  0Harmony.dll
   AutoReadMod.dll
-  Config.xml
   ModInfo.xml
+  Config.xml
 ```
 
+There is **no** nested `Config\` folder. `Config.xml` sits next to the DLL, not inside a `Config` directory.
+
+Do **not** add `0Harmony.dll` to this folder. The game already provides Harmony via **`Mods\0_TFP_Harmony`** (shipped with 7 Days to Die). If that folder is missing, verify Steam game files.
+
 If the `Mods` folder does not exist, create it next to `7DaysToDie.exe`.
+
+3. **Multiplayer:** install the **same mod version** on the server and every client that should use it. Mixed versions are unsupported.
 
 ## Configuration
 
@@ -49,7 +53,7 @@ See [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 
 ## Troubleshooting
 
-- If the mod does not load, confirm the folder layout above and that EAC is disabled.
+- If the mod does not load, confirm the folder layout above, that **`Mods\0_TFP_Harmony`** exists, and that EAC is disabled. Do not place a second `0Harmony.dll` inside `AutoReadMod`.
 - If items are not auto-read, check `Enabled` and the relevant `ItemTypes` entries in `Config.xml`.
 - If you need more detail, set `DebugMode` to `true`, reproduce the issue, then inspect the client log for `AutoReadMod` / `[HYP]` lines. For normal manual launches (e.g. Steam), the newest file is usually `%AppData%\Roaming\7DaysToDie\logs\output_log_client__*.txt`. Some scripted or integration launches persist logs under `%AppData%\LocalLow\The Fun Pimps\7 Days To Die\Player.log` instead.
 

@@ -18,8 +18,9 @@ namespace AutoReadMod.Tests.Tools
             var scriptPath = TestDataPath.GetRepoFile(@"tools\deploy.ps1");
             var content = File.ReadAllText(scriptPath);
             
-            Assert.Contains("7dtd-mod-dev-tools", content);
+            Assert.Contains("0_TFP_Harmony", content);
             Assert.Contains("AutoReadMod", content);
+            Assert.DoesNotContain("7dtd-mod-dev-tools", content);
         }
     }
 }

@@ -36,6 +36,7 @@ namespace AutoReadMod
             }
 
             ContainerOpenPatchShared.ProcessDeferredContainer();
+            BagOpenPatchShared.ProcessDeferredBag();
         }
     }
 

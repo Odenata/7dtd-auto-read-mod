@@ -44,6 +44,7 @@ net_xunit_test(
         "AutoReaderTests.cs",
         "AutoReaderBehaviorTests.cs",
         "BundleOpenPatchTests.cs",
+        "MagazineBonusAndSkipAlreadyReadTests.cs",
         "VisualizationTests.cs",
     ],
     deps = MOD_TEST_DEPS,
