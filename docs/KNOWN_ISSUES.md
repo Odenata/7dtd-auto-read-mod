@@ -20,9 +20,9 @@ Bonus skill points are still not shown separately in the auto-read notification 
 
 By default (`SkipAlreadyRead=false`), auto-read still consumes readables that grant no benefit — same as earlier releases.
 
-Set `<SkipAlreadyRead>true</SkipAlreadyRead>` in `Config.xml` to stop consuming units once magazines are at max crafting skill, books/perks are already unlocked, or schematics/recipes are already known. Partial stacks leave the remainder in the container.
+Set `<SkipAlreadyRead>true</SkipAlreadyRead>` in `Config.xml` (or the Gears World Behavior switch) to stop consuming units once magazines are at max crafting skill, books/perks are already unlocked, or schematics/recipes are already known. Partial stacks leave the remainder in the container.
 
-**1.0.2 detection notes:** most vanilla schematics unlock via CVar (not `CraftingManager`); books use perk max / level ≥ 1 when max cannot be resolved. Restart the game after changing `Config.xml`.
+**1.0.2 detection notes:** most vanilla schematics unlock via CVar (not `CraftingManager`); books use perk max / level ≥ 1 when max cannot be resolved. Restart the game after changing `Config.xml` by hand; Gears UI changes apply without restart.
 
 ## Magazine skill notification can show an intermediate level
 

@@ -10,8 +10,9 @@ The normal workflow is manual: build the mod, stage the deployable files, create
 - Player README: [`../README.md`](../README.md)
 - Current release version: [`../VERSION`](../VERSION)
 - Mod vs game compatibility: [`COMPATIBILITY.md`](COMPATIBILITY.md)
+- Release notes draft / history: [`releases/README.md`](releases/README.md), [`../CHANGELOG.md`](../CHANGELOG.md)
 
-Keep these version fields aligned for each release:
+Keep these version fields aligned for each release (or use `cut --bump-version`):
 
 - [`../VERSION`](../VERSION)
 - [`../MODULE.bazel`](../MODULE.bazel) `module(version = "...")`
@@ -21,24 +22,31 @@ Release zip names use **mod version only** (for example `dist\AutoReadMod-1.1.0.
 
 ## Release checklist
 
-1. Decide the target 7 Days to Die version(s) supported by the release.
-2. Update version fields if this is a new release.
-3. Update [`COMPATIBILITY.md`](COMPATIBILITY.md) if the supported game version range changed.
-4. Update player-facing notes in [`../README.md`](../README.md) and [`CURSEFORGE_DESCRIPTION.md`](CURSEFORGE_DESCRIPTION.md) if behavior changed.
-5. Run verification:
+1. Fill / review [`releases/unreleased.md`](releases/unreleased.md).
+2. Preview and cut release notes (bumps version fields when using `--bump-version`):
+
+   ```powershell
+   .\tools\release_notes.ps1 preview
+   .\tools\release_notes.ps1 cut --version X.Y.Z --bump-version
+   ```
+
+3. Decide the target 7 Days to Die version(s) supported by the release.
+4. Update [`COMPATIBILITY.md`](COMPATIBILITY.md) if the supported game version range changed.
+5. Update player-facing notes in [`../README.md`](../README.md) and [`CURSEFORGE_DESCRIPTION.md`](CURSEFORGE_DESCRIPTION.md) if behavior changed.
+6. Run verification:
 
    ```bash
    bazel test //tests:unit
    bazel test //tests:tools
    ```
 
-6. Build the DLL:
+7. Build the DLL:
 
    ```bash
    bazel build //src:AutoReadMod
    ```
 
-7. Create the release zip:
+8. Create the release zip:
 
    ```powershell
    .\tools\package_release.ps1 -DllPath .\bazel-bin\src\AutoReadMod.dll
@@ -46,22 +54,27 @@ Release zip names use **mod version only** (for example `dist\AutoReadMod-1.1.0.
 
    Or, without `-DllPath`, the script uses `src\bin\Release\net472\AutoReadMod.dll` after `.\tools\build.ps1 -Configuration Release`.
 
-8. Inspect the zip before upload. It should contain one top-level folder:
+9. Inspect the zip before upload. It should contain one top-level folder:
 
    ```text
    AutoReadMod/
      AutoReadMod.dll
+     GearsAPI.dll
      Config.xml
+     ModSettings.xml
      ModInfo.xml
+     icon.png
+     Config/
+       Localization.csv
    ```
 
-   Do **not** include `0Harmony.dll`. Players use the game's official `Mods\0_TFP_Harmony`.
-9. Upload `dist\AutoReadMod-<version>.zip` to CurseForge or GitHub Releases (see console output for the exact path).
-10. Select the supported 7 Days to Die game version(s), keeping them consistent with `COMPATIBILITY.md`.
-11. Add a markdown changelog for the file.
-12. Paste or update the project description from `CURSEFORGE_DESCRIPTION.md`.
-13. Verify the uploaded file after approval by downloading it and checking the zip layout.
-14. Create a matching Git tag and GitHub Release if you want GitHub to retain old downloadable versions.
+   Do **not** include `0Harmony.dll` or compile-only `InControl.dll`. Players use the game's official `Mods\0_TFP_Harmony`. Optional in-game menu requires Gears + Quartz separately.
+10. Upload `dist\AutoReadMod-<version>.zip` to CurseForge or GitHub Releases (see console output for the exact path).
+11. Select the supported 7 Days to Die game version(s), keeping them consistent with `COMPATIBILITY.md`.
+12. Paste the new top section from [`../CHANGELOG.md`](../CHANGELOG.md) into the CurseForge / GitHub file changelog (do not invent notes at upload time).
+13. Paste or update the project description from `CURSEFORGE_DESCRIPTION.md`.
+14. Verify the uploaded file after approval by downloading it and checking the zip layout.
+15. Create a matching Git tag and GitHub Release if you want GitHub to retain old downloadable versions.
 
 ## Archive policy
 

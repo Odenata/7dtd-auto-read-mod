@@ -22,6 +22,10 @@
       <HintPath>$(SevenDtdInstallDir)\Mods\0_TFP_Harmony\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="InControl">
+      <HintPath>$(SevenDtdInstallDir)\7DaysToDie_Data\Managed\InControl.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(SevenDtdInstallDir)' == ''">
@@ -32,12 +36,24 @@
       <HintPath>$(SevenDtdDevToolsDir)\third_party\harmony\lib\net472\0Harmony.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="InControl">
+      <HintPath>..\third_party\gearsapi\lib\net472\InControl.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="GearsAPI">
+      <HintPath>..\third_party\gearsapi\lib\net472\GearsAPI.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="ModApi.cs" />
     <Compile Include="ModConfig.cs" />
+    <Compile Include="GearsModApi.cs" />
     <Compile Include="ContainerOpenPatch.cs" />
     <Compile Include="BagOpenPatch.cs" />
     <Compile Include="BundleOpenPatch.cs" />
@@ -48,6 +64,8 @@
     <Compile Include="AutoReadVisualizationOverlay.cs" />
     <None Include="ModInfo.xml" />
     <None Include="Config.xml" />
+    <None Include="ModSettings.xml" />
+    <None Include="Config\Localization.csv" />
   </ItemGroup>
 
 </Project>

@@ -1,8 +1,6 @@
 # Game version compatibility
 
-
-
-Use this table to see which **7 Days to Die** builds work with which **mod** version. Update it when maintainers verify a combination or when a game update breaks the mod.
+Use this table to see which **7 Days to Die** builds work with which **mod** version. Update it when maintainers verify a combination or when a game update breaks the mod. Player-facing release history: [`../CHANGELOG.md`](../CHANGELOG.md).
 
 
 

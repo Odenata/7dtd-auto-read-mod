@@ -112,10 +112,20 @@ When you start the game yourself (typical Steam launch), client logs are usually
 
 Automated or scripted runs may instead write `%AppData%\LocalLow\The Fun Pimps\7 Days To Die\Player.log`. Search for `AutoReadMod` or `[HYP]` when debugging read paths.
 
+## Gears playtest checklist (manual)
+
+With Gears + Quartz installed (and early load order):
+
+1. Esc → Mods settings → Auto Read Mod **Client** tab: toggle visualization / debug; confirm no restart needed.
+2. Host: change **World Behavior** Books/Magazines/Schematics; open loot and confirm categories honor the new values.
+3. Dedicated/client: with Gears on server, change World settings as host/admin, confirm joining clients pick up enforcement (reconnect if mid-session sync does not push).
+4. Without Gears: mod still loads; `Config.xml` alone controls behavior.
+
 ## Related docs
 
 - [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md): project goals and build requirements.
 - [`DESIGN.md`](DESIGN.md): runtime behavior and test strategy.
 - [`COMPATIBILITY.md`](COMPATIBILITY.md): mod version vs game version table.
 - [`PUBLISHING.md`](PUBLISHING.md): release checklist and zip layout.
+- [`releases/README.md`](releases/README.md): unreleased draft → CHANGELOG cut.
 - [`FUTURE_WORK.md`](FUTURE_WORK.md): deferred ideas and failed experiments worth remembering.

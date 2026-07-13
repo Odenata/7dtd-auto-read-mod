@@ -108,8 +108,11 @@ New-Item -ItemType Directory -Path $stageModDir -Force | Out-Null
 
 $requiredFiles = @(
   "AutoReadMod.dll",
+  "GearsAPI.dll",
   "ModInfo.xml",
-  "Config.xml"
+  "Config.xml",
+  "ModSettings.xml",
+  "icon.png"
 )
 
 foreach ($file in $requiredFiles) {
@@ -118,8 +121,10 @@ foreach ($file in $requiredFiles) {
     Write-Host "ERROR: Missing prepared file: $src" -ForegroundColor Red
     exit 1
   }
-  Copy-Item -Path $src -Destination (Join-Path $stageModDir $file) -Force
 }
+
+# Ship the full prepared tree (DLL, GearsAPI, settings, icon, Config\Localization.csv, …).
+Copy-Item -Path (Join-Path $preparedDir "*") -Destination $stageModDir -Recurse -Force
 
 $zipPath = Join-Path $OutputDir "AutoReadMod-$modLabel.zip"
 if (Test-Path $zipPath) {

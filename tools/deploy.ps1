@@ -3,8 +3,8 @@
   Deploys AutoReadMod into the game Mods folder without shipping 0Harmony.dll.
 
 .DESCRIPTION
-  Prefers bazel-bin\src\AutoReadMod.dll when present. Copies AutoReadMod.dll and ModInfo.xml.
-  Preserves an existing Config.xml in the game Mods folder (does not overwrite user settings).
+  Prefers bazel-bin\src\AutoReadMod.dll when present. Copies AutoReadMod.dll, GearsAPI.dll, ModInfo.xml, ModSettings.xml, icon.png, and Config\Localization.csv.
+  Preserves existing Config.xml / ModSettings.xml in the game Mods folder (does not overwrite user settings).
   Removes any leftover Mods\AutoReadMod\0Harmony.dll so the game uses Mods\0_TFP_Harmony.
 #>
 param(
@@ -12,6 +12,7 @@ param(
   [string]$GameInstallDir = $(if ($env:7_DAYS_TO_DIE_GAME_PATH) { $env:7_DAYS_TO_DIE_GAME_PATH } else { "C:\Program Files (x86)\Steam\steamapps\common\7 Days To Die" }),
   [string]$DllPath = "",
   [switch]$OverwriteConfig
+  # Also overwrites ModSettings.xml when set
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,6 +56,14 @@ $modInfo = Join-Path $repoRoot "src\ModInfo.xml"
 Copy-Item -LiteralPath $modInfo -Destination (Join-Path $modPath "ModInfo.xml") -Force
 Write-Host "Copied ModInfo.xml" -ForegroundColor Green
 
+$gearsApi = Join-Path $repoRoot "third_party\gearsapi\lib\net472\GearsAPI.dll"
+if (-not (Test-Path $gearsApi)) {
+  Write-Host "ERROR: Missing GearsAPI.dll at $gearsApi" -ForegroundColor Red
+  exit 1
+}
+Copy-Item -LiteralPath $gearsApi -Destination (Join-Path $modPath "GearsAPI.dll") -Force
+Write-Host "Copied GearsAPI.dll" -ForegroundColor Green
+
 $configSrc = Join-Path $repoRoot "src\Config.xml"
 $configDst = Join-Path $modPath "Config.xml"
 if ($OverwriteConfig -or -not (Test-Path $configDst)) {
@@ -63,6 +72,31 @@ if ($OverwriteConfig -or -not (Test-Path $configDst)) {
 } else {
   Write-Host "Kept existing Config.xml (use -OverwriteConfig to replace)" -ForegroundColor Cyan
 }
+
+$modSettingsSrc = Join-Path $repoRoot "src\ModSettings.xml"
+$modSettingsDst = Join-Path $modPath "ModSettings.xml"
+if ($OverwriteConfig -or -not (Test-Path $modSettingsDst)) {
+  Copy-Item -LiteralPath $modSettingsSrc -Destination $modSettingsDst -Force
+  Write-Host "Copied ModSettings.xml" -ForegroundColor Green
+} else {
+  Write-Host "Kept existing ModSettings.xml (use -OverwriteConfig to replace)" -ForegroundColor Cyan
+}
+
+$locSrc = Join-Path $repoRoot "src\Config\Localization.csv"
+$locDir = Join-Path $modPath "Config"
+if (-not (Test-Path $locDir)) {
+  New-Item -ItemType Directory -Path $locDir -Force | Out-Null
+}
+Copy-Item -LiteralPath $locSrc -Destination (Join-Path $locDir "Localization.csv") -Force
+Write-Host "Copied Config\Localization.csv" -ForegroundColor Green
+
+$iconSrc = Join-Path $repoRoot "icon.png"
+if (-not (Test-Path $iconSrc)) {
+  Write-Host "ERROR: Missing $iconSrc" -ForegroundColor Red
+  exit 1
+}
+Copy-Item -LiteralPath $iconSrc -Destination (Join-Path $modPath "icon.png") -Force
+Write-Host "Copied icon.png" -ForegroundColor Green
 
 $staleHarmony = Join-Path $modPath "0Harmony.dll"
 if (Test-Path $staleHarmony) {

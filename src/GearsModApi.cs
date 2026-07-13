@@ -1,0 +1,241 @@
+using System;
+using GearsAPI.Settings;
+using GearsAPI.Settings.Global;
+using GearsAPI.Settings.World;
+using UnityEngine;
+
+namespace AutoReadMod
+{
+    /// <summary>
+    /// Soft-dep Gears bridge. Discovered by Gears when present; ignored when Gears is not installed.
+    /// World settings = enforcement (synced). Global = debug + visualization (per client).
+    /// </summary>
+    public class GearsModApi : IGearsModApi
+    {
+        private const string WorldCategory = "Behavior";
+        private const string GlobalTab = "Client";
+        private const string GlobalCategoryDebug = "Debug";
+        private const string GlobalCategoryViz = "Visualization";
+
+        private static IModWorldSettings worldSettings;
+        private static bool globalListenersAttached;
+
+        public void InitMod(IGearsMod modInstance)
+        {
+            SafeLog("GearsModApi.InitMod");
+        }
+
+        public void OnGlobalSettingsLoaded(IModGlobalSettings modSettings)
+        {
+            if (modSettings == null)
+                return;
+
+            try
+            {
+                ApplyGlobalFromGears(modSettings);
+                if (!globalListenersAttached)
+                {
+                    AttachGlobalListeners(modSettings);
+                    globalListenersAttached = true;
+                }
+                ModConfig.Instance.Save();
+                SafeLog("Gears global settings applied");
+            }
+            catch (Exception ex)
+            {
+                SafeLog($"Gears OnGlobalSettingsLoaded failed: {ex.Message}");
+            }
+        }
+
+        public void OnWorldSettingsLoaded(IModWorldSettings settings)
+        {
+            if (settings == null)
+                return;
+
+            try
+            {
+                worldSettings = settings;
+                ApplyWorldFromGears(settings);
+                ModConfig.Instance.Save();
+                SafeLog("Gears world settings applied");
+            }
+            catch (Exception ex)
+            {
+                SafeLog($"Gears OnWorldSettingsLoaded failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Re-read World CurrentValues into ModConfig. World settings have no OnSettingChanged
+        /// in GearsAPI; call before processing loot so host mid-session UI edits apply.
+        /// </summary>
+        public static void SyncWorldSettingsIfLoaded()
+        {
+            if (worldSettings == null)
+                return;
+
+            try
+            {
+                ApplyWorldFromGears(worldSettings);
+            }
+            catch (Exception ex)
+            {
+                SafeLog($"Gears SyncWorldSettingsIfLoaded failed: {ex.Message}");
+            }
+        }
+
+        private static void ApplyWorldFromGears(IModWorldSettings settings)
+        {
+            var category = settings.GetCategory(WorldCategory);
+            if (category == null)
+                return;
+
+            var config = ModConfig.Instance;
+            config.ApplyWorldSettings(
+                enabled: ReadWorldBool(category, "Enabled", config.Enabled),
+                skipAlreadyRead: ReadWorldBool(category, "SkipAlreadyRead", config.SkipAlreadyRead),
+                readBooks: ReadWorldBool(category, "Books", config.ReadBooks),
+                readMagazines: ReadWorldBool(category, "Magazines", config.ReadMagazines),
+                readSchematics: ReadWorldBool(category, "Schematics", config.ReadSchematics));
+        }
+
+        private static void ApplyGlobalFromGears(IModGlobalSettings settings)
+        {
+            var tab = settings.GetTab(GlobalTab);
+            if (tab == null)
+                return;
+
+            var config = ModConfig.Instance;
+            var debugCat = tab.GetCategory(GlobalCategoryDebug);
+            var vizCat = tab.GetCategory(GlobalCategoryViz);
+
+            bool debugMode = config.DebugMode;
+            bool vizEnabled = config.VisualizationEnabled;
+            int maxVisible = config.VisualizationMaxVisible;
+            Color book = config.VisualizationColorBook;
+            Color magazine = config.VisualizationColorMagazine;
+            Color recipe = config.VisualizationColorRecipe;
+            Color schematic = config.VisualizationColorSchematic;
+
+            if (debugCat != null)
+                debugMode = ReadGlobalBool(debugCat, "DebugMode", debugMode);
+
+            if (vizCat != null)
+            {
+                vizEnabled = ReadGlobalBool(vizCat, "Enabled", vizEnabled);
+                maxVisible = ReadGlobalInt(vizCat, "MaxVisible", maxVisible);
+                book = ReadGlobalColor(vizCat, "ColorBook", book);
+                magazine = ReadGlobalColor(vizCat, "ColorMagazine", magazine);
+                recipe = ReadGlobalColor(vizCat, "ColorRecipe", recipe);
+                schematic = ReadGlobalColor(vizCat, "ColorSchematic", schematic);
+            }
+
+            config.ApplyGlobalSettings(debugMode, vizEnabled, maxVisible, book, magazine, recipe, schematic);
+        }
+
+        private static void AttachGlobalListeners(IModGlobalSettings settings)
+        {
+            foreach (var setting in settings.GetAllGlobalSettings())
+            {
+                if (setting == null)
+                    continue;
+                setting.OnSettingChanged -= OnGlobalSettingChanged;
+                setting.OnSettingChanged += OnGlobalSettingChanged;
+            }
+        }
+
+        private static void OnGlobalSettingChanged(IGlobalModSetting setting, string newValue)
+        {
+            try
+            {
+                var config = ModConfig.Instance;
+                var name = setting?.Name ?? "";
+                var category = setting?.Category?.Name ?? "";
+
+                if (category == GlobalCategoryDebug && name == "DebugMode")
+                {
+                    config.DebugMode = ModConfig.ParseBoolSetting(newValue, config.DebugMode);
+                }
+                else if (category == GlobalCategoryViz)
+                {
+                    switch (name)
+                    {
+                        case "Enabled":
+                            config.VisualizationEnabled = ModConfig.ParseBoolSetting(newValue, config.VisualizationEnabled);
+                            break;
+                        case "MaxVisible":
+                            config.VisualizationMaxVisible = ModConfig.ParseIntSetting(newValue, config.VisualizationMaxVisible);
+                            break;
+                        case "ColorBook":
+                            config.VisualizationColorBook = ResolveColor(setting, config.VisualizationColorBook);
+                            break;
+                        case "ColorMagazine":
+                            config.VisualizationColorMagazine = ResolveColor(setting, config.VisualizationColorMagazine);
+                            break;
+                        case "ColorRecipe":
+                            config.VisualizationColorRecipe = ResolveColor(setting, config.VisualizationColorRecipe);
+                            break;
+                        case "ColorSchematic":
+                            config.VisualizationColorSchematic = ResolveColor(setting, config.VisualizationColorSchematic);
+                            break;
+                    }
+                }
+
+                config.Save();
+            }
+            catch (Exception ex)
+            {
+                SafeLog($"Gears OnGlobalSettingChanged failed: {ex.Message}");
+            }
+        }
+
+        private static bool ReadWorldBool(IWorldModSettingsCategory category, string name, bool defaultValue)
+        {
+            var setting = category.GetSetting(name);
+            if (setting == null)
+                return defaultValue;
+            return ModConfig.ParseBoolSetting(setting.CurrentValue, defaultValue);
+        }
+
+        private static bool ReadGlobalBool(IGlobalModSettingsCategory category, string name, bool defaultValue)
+        {
+            var setting = category.GetSetting(name) as IGlobalValueSetting;
+            if (setting == null)
+                return defaultValue;
+            return ModConfig.ParseBoolSetting(setting.CurrentValue, defaultValue);
+        }
+
+        private static int ReadGlobalInt(IGlobalModSettingsCategory category, string name, int defaultValue)
+        {
+            var setting = category.GetSetting(name) as IGlobalValueSetting;
+            if (setting == null)
+                return defaultValue;
+            return ModConfig.ParseIntSetting(setting.CurrentValue, defaultValue);
+        }
+
+        private static Color ReadGlobalColor(IGlobalModSettingsCategory category, string name, Color defaultColor)
+        {
+            var setting = category.GetSetting(name);
+            return ResolveColor(setting, defaultColor);
+        }
+
+        private static Color ResolveColor(IGlobalModSetting setting, Color defaultColor)
+        {
+            if (setting is IColorSelectorGlobalSetting colorSetting)
+                return colorSetting.CurrentColor;
+            return defaultColor;
+        }
+
+        private static void SafeLog(string message)
+        {
+            try
+            {
+                UnityEngine.Debug.Log($"[AutoReadMod] {message}");
+            }
+            catch
+            {
+                // Unity not available (test environment)
+            }
+        }
+    }
+}

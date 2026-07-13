@@ -161,5 +161,89 @@ namespace AutoReadMod.Tests
             Assert.Equal(green.g, config.VisualizationColorBook.g);
             Assert.Equal(blue.b, config.VisualizationColorMagazine.b);
         }
+
+        [Theory]
+        [InlineData("true", true)]
+        [InlineData("false", false)]
+        [InlineData("True", true)]
+        [InlineData("enabled", true)]
+        [InlineData("Disabled", false)]
+        [InlineData("1", true)]
+        [InlineData("0", false)]
+        public void ParseBoolSetting_MapsGearsStyleValues(string raw, bool expected)
+        {
+            Assert.Equal(expected, ModConfig.ParseBoolSetting(raw));
+        }
+
+        [Fact]
+        public void ParseBoolSetting_EmptyUsesDefault()
+        {
+            Assert.True(ModConfig.ParseBoolSetting(null, true));
+            Assert.False(ModConfig.ParseBoolSetting(" ", false));
+        }
+
+        [Fact]
+        public void ApplyWorldSettings_UpdatesEnforcementKnobs()
+        {
+            var config = new ModConfig();
+            config.ApplyWorldSettings(
+                enabled: false,
+                skipAlreadyRead: true,
+                readBooks: false,
+                readMagazines: true,
+                readSchematics: false);
+
+            Assert.False(config.Enabled);
+            Assert.True(config.SkipAlreadyRead);
+            Assert.False(config.ReadBooks);
+            Assert.True(config.ReadMagazines);
+            Assert.False(config.ReadSchematics);
+            // Global knobs untouched
+            Assert.False(config.DebugMode);
+            Assert.True(config.VisualizationEnabled);
+        }
+
+        [Fact]
+        public void ApplyGlobalSettings_UpdatesClientKnobs()
+        {
+            var config = new ModConfig();
+            var book = ModConfig.ColorFromRgb255(0, 204, 64);
+            var mag = ModConfig.ColorFromRgb255(0, 102, 255);
+            var recipe = ModConfig.ColorFromRgb255(230, 204, 0);
+            var schematic = ModConfig.ColorFromRgb255(255, 0, 255);
+
+            config.ApplyGlobalSettings(
+                debugMode: true,
+                visualizationEnabled: false,
+                visualizationMaxVisible: 12,
+                colorBook: book,
+                colorMagazine: mag,
+                colorRecipe: recipe,
+                colorSchematic: schematic);
+
+            Assert.True(config.DebugMode);
+            Assert.False(config.VisualizationEnabled);
+            Assert.Equal(12, config.VisualizationMaxVisible);
+            Assert.Equal(ModConfig.ColorToHex(book), ModConfig.ColorToHex(config.VisualizationColorBook));
+            Assert.Equal("00CC40", ModConfig.ColorToHex(config.VisualizationColorBook));
+            Assert.Equal("0066FF", ModConfig.ColorToHex(config.VisualizationColorMagazine));
+            // World knobs untouched
+            Assert.True(config.Enabled);
+            Assert.True(config.ReadBooks);
+        }
+
+        [Fact]
+        public void ColorToHex_And_FromRgb255_RoundTripDefaults()
+        {
+            Assert.Equal("00CC40", ModConfig.ColorToHex(ModConfig.ColorFromRgb255(0, 204, 64)));
+            Assert.Equal("FF00FF", ModConfig.ColorToHex(ModConfig.ColorFromRgb255(255, 0, 255)));
+        }
+
+        [Fact]
+        public void ParseIntSetting_ParsesOrFallsBack()
+        {
+            Assert.Equal(8, ModConfig.ParseIntSetting("8", 1));
+            Assert.Equal(3, ModConfig.ParseIntSetting("nope", 3));
+        }
     }
 }

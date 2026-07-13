@@ -88,6 +88,7 @@ namespace AutoReadMod
 
         public static void ProcessContainer(EntityPlayer player, ITileEntityLootable container, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
         {
+            GearsModApi.SyncWorldSettingsIfLoaded();
             DebugLog($"ProcessContainer called, Enabled={ModConfig.Instance.Enabled}");
 
             if (!ModConfig.Instance.Enabled)
@@ -158,6 +159,7 @@ namespace AutoReadMod
 
         internal static void ProcessInventorySlots(EntityPlayer player, Inventory inventory, IDictionary<int, int> slotReadCounts)
         {
+            GearsModApi.SyncWorldSettingsIfLoaded();
             DebugLog($"ProcessInventorySlots called, Enabled={ModConfig.Instance.Enabled}");
 
             if (!ModConfig.Instance.Enabled)
@@ -201,6 +203,7 @@ namespace AutoReadMod
 
         internal static void ProcessBagSlots(EntityPlayer player, Bag bag, IDictionary<int, int> slotReadCounts)
         {
+            GearsModApi.SyncWorldSettingsIfLoaded();
             DebugLog($"ProcessBagSlots called, Enabled={ModConfig.Instance.Enabled}");
 
             if (!ModConfig.Instance.Enabled)
@@ -250,6 +253,7 @@ namespace AutoReadMod
         /// </summary>
         public static void ProcessEntityLootBag(EntityPlayer player, Bag bag, XUiC_BagContainer bagContainer = null)
         {
+            GearsModApi.SyncWorldSettingsIfLoaded();
             DebugLog($"ProcessEntityLootBag called, Enabled={ModConfig.Instance.Enabled}");
 
             if (!ModConfig.Instance.Enabled)
@@ -290,6 +294,7 @@ namespace AutoReadMod
 
         internal static bool ShouldAutoReadItem(ItemStack itemStack)
         {
+            GearsModApi.SyncWorldSettingsIfLoaded();
             var itemKind = ClassifyReadableItem(itemStack);
             if (itemKind == ReadableItemKind.None)
             {

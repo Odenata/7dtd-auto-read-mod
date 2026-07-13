@@ -30,14 +30,15 @@ The mod identifies readable items (books, magazines, schematics, recipes), appli
 
 ## Configuration
 
-See `src/Config.xml` and `ModConfig.cs`:
+See `src/Config.xml`, `src/ModSettings.xml`, and `ModConfig.cs`:
 
-- **Enabled** — Enable/disable overall behavior
-- **ItemTypes/Books** — Include books
-- **ItemTypes/Magazines** — Include magazines
-- **ItemTypes/Schematics** — Include schematics and recipes
-- **DebugMode** — Verbose logging
-- **Visualization**: Enabled, max visible, per-kind colors (hex in Config.xml)
+- **Enabled** — Enable/disable overall behavior (**Gears World** when present)
+- **SkipAlreadyRead** — Leave no-benefit units in loot (**Gears World**)
+- **ItemTypes/Books|Magazines|Schematics** — Include those kinds (**Gears World**)
+- **DebugMode** — Verbose logging (**Gears Global / client**)
+- **Visualization**: Enabled, max visible, per-kind colors (**Gears Global / client**)
+
+Soft-dep: ship `GearsAPI.dll`; `GearsModApi` (`IGearsModApi`) applies settings live. Without Gears, Config.xml alone is used. World CurrentValues are re-synced on loot processing because GearsAPI has no World `OnSettingChanged`.
 
 ## Testing Strategy
 

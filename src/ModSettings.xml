@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModSettings>
+  <!-- World: synced server ↔ clients when Gears is installed. Enforcement knobs. -->
+  <World>
+    <Category name="Behavior" displayKey="armWorldBehavior" tooltipKey="armWorldBehaviorTip">
+      <Switch name="Enabled" displayKey="armEnabled" tooltipKey="armEnabledWorldTip" defaultValue="true" leftValue="false" rightValue="true" />
+      <Switch name="SkipAlreadyRead" displayKey="armSkipAlreadyRead" tooltipKey="armSkipAlreadyReadTip" defaultValue="false" leftValue="false" rightValue="true" />
+      <Switch name="Books" displayKey="armBooks" tooltipKey="armBooksTip" defaultValue="true" leftValue="false" rightValue="true" />
+      <Switch name="Magazines" displayKey="armMagazines" tooltipKey="armMagazinesTip" defaultValue="true" leftValue="false" rightValue="true" />
+      <Switch name="Schematics" displayKey="armSchematics" tooltipKey="armSchematicsTip" defaultValue="true" leftValue="false" rightValue="true" />
+    </Category>
+  </World>
+
+  <!-- Global: this client only (Esc / main menu Mods settings). -->
+  <Global>
+    <Tab name="Client" displayKey="armTabClient" tooltipKey="armTabClientTip">
+      <Category name="Debug" displayKey="armCategoryDebug" tooltipKey="armCategoryDebugTip">
+        <Switch name="DebugMode" displayKey="armDebugMode" tooltipKey="armDebugModeTip" defaultValue="false" leftValue="false" rightValue="true" />
+      </Category>
+      <Category name="Visualization" displayKey="armCategoryVisualization" tooltipKey="armCategoryVisualizationTip">
+        <Switch name="Enabled" displayKey="armVizEnabled" tooltipKey="armVizEnabledTip" defaultValue="true" leftValue="false" rightValue="true" />
+        <Slider name="MaxVisible" displayKey="armVizMaxVisible" tooltipKey="armVizMaxVisibleTip" defaultValue="8">
+          <Property type="incrementalValuesInt" increment="1" minValue="1" maxValue="32" />
+        </Slider>
+        <Color name="ColorBook" displayKey="armColorBook" tooltipKey="armColorBookTip" color="0,204,64" defaultColor="0,204,64" />
+        <Color name="ColorMagazine" displayKey="armColorMagazine" tooltipKey="armColorMagazineTip" color="0,102,255" defaultColor="0,102,255" />
+        <Color name="ColorRecipe" displayKey="armColorRecipe" tooltipKey="armColorRecipeTip" color="230,204,0" defaultColor="230,204,0" />
+        <Color name="ColorSchematic" displayKey="armColorSchematic" tooltipKey="armColorSchematicTip" color="255,0,255" defaultColor="255,0,255" />
+      </Category>
+    </Tab>
+  </Global>
+</ModSettings>

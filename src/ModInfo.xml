@@ -3,7 +3,8 @@
   <Name value="AutoReadMod" />
   <DisplayName value="Auto Read Mod" />
   <Description value="Auto-reads books, magazines, and schematics when opening loot containers." />
-  <Author value="LearningGrounds" />
-  <Version value="1.1.0" />
+  <Author value="Odenata" />
+  <Version value="1.2.0" />
   <Website value="" />
+  <Icon value="icon.png" />
 </ModInfo>

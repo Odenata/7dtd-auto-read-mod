@@ -3,7 +3,7 @@
   Assembles everything that belongs in the game's Mods\AutoReadMod folder into prepared_mod_files\.
 
 .DESCRIPTION
-  Copies AutoReadMod.dll, ModInfo.xml, and Config.xml.
+  Copies AutoReadMod.dll, GearsAPI.dll, ModInfo.xml, Config.xml, ModSettings.xml, icon.png, and Config\Localization.csv.
   Runtime Harmony comes from the game's official Mods\0_TFP_Harmony folder — do not ship 0Harmony.dll.
   End users can copy all files from prepared_mod_files into their game Mods folder after running
   this script (developers usually run deploy.ps1 which builds + deploys).
@@ -48,11 +48,28 @@ Get-ChildItem -Path $outDir -File -ErrorAction SilentlyContinue | Remove-Item -F
 Get-ChildItem -Path $outDir -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
 $srcDir = Join-Path $ModRepoRoot "src"
+$gearsApi = Join-Path $ModRepoRoot "third_party\gearsapi\lib\net472\GearsAPI.dll"
 $files = @(
   @{ Src = $DllPath; Dest = "AutoReadMod.dll" }
+  @{ Src = $gearsApi; Dest = "GearsAPI.dll" }
   @{ Src = Join-Path $srcDir "ModInfo.xml"; Dest = "ModInfo.xml" }
   @{ Src = Join-Path $srcDir "Config.xml"; Dest = "Config.xml" }
+  @{ Src = Join-Path $srcDir "ModSettings.xml"; Dest = "ModSettings.xml" }
+  @{ Src = Join-Path $ModRepoRoot "icon.png"; Dest = "icon.png" }
 )
+
+# Localization for Gears display keys
+$locSrc = Join-Path $srcDir "Config\Localization.csv"
+$locDestDir = Join-Path $outDir "Config"
+if (-not (Test-Path $locDestDir)) {
+  New-Item -ItemType Directory -Path $locDestDir -Force | Out-Null
+}
+if (-not (Test-Path $locSrc)) {
+  Write-Host "ERROR: Missing $locSrc" -ForegroundColor Red
+  exit 1
+}
+Copy-Item -Path $locSrc -Destination (Join-Path $locDestDir "Localization.csv") -Force
+Write-Host "Prepared Config\Localization.csv" -ForegroundColor Green
 
 foreach ($f in $files) {
   if (-not (Test-Path $f.Src)) {
