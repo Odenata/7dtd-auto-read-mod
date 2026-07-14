@@ -9,6 +9,12 @@
   <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
   <DebugMode>false</DebugMode>
 
+  <!-- Client audio cues when auto-reading. Values: true, false -->
+  <Audio>
+    <PlayReadSounds>true</PlayReadSounds>
+    <PlayBookSetCompleteSound>true</PlayBookSetCompleteSound>
+  </Audio>
+
   <!-- Which item types to auto-read when you open loot. Set to false to skip that type. Values: true, false -->
   <ItemTypes>
     <Books>true</Books>

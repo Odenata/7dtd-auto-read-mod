@@ -65,6 +65,24 @@ Bonus points may still not show as a separate auto-read notification — progres
 
 ---
 
+## Book set Complete perk missing from loot (1.2.1+)
+
+Thanks for the report. On open loot, older builds unlocked each book’s individual perk but skipped the set’s Complete perk (the 8th unlock).
+
+**1.2.1+** fires the loot book end-of-read events and grants Complete when the set is finished. If you were already stuck at 7/7 without Complete, auto-read any book from that set once (or disable `SkipAlreadyRead` briefly if it was blocking the repair consume).
+
+---
+
+## Sandbox Magazine Progress ignored on loot magazines (1.2.1+)
+
+Thanks for the report. Loot auto-read was granting **+1** crafting skill per magazine and ignoring sandbox **Magazine Progress**.
+
+**1.2.1+** uses your `PointsPerMagazine` value for the base grant and for Nerd Outfit / Photographic Memory bonus grants (same as vanilla: bonus is a second full base grant, not a multiplier on the chance).
+
+If you tried **1.2.1** and still saw +1 only, update to **1.2.2** — that build correctly reads the sandbox option.
+
+---
+
 ## Experimental vs stable
 
 | Mod | Game build | Notes |
@@ -73,5 +91,6 @@ Bonus points may still not show as a separate auto-read notification — progres
 | 1.0.1 | 3.0.0 **(b259) stable** | Bag / non-static loot via `XUiC_BagContainer.SetBag` |
 | 1.0.2 | 3.0.0 **(b259) stable** | INT Mastery loot double-point fix; opt-in `SkipAlreadyRead` |
 | 1.1.0 | 3.0.0 **(b259) stable** | No bundled `0Harmony.dll`; requires official `Mods\0_TFP_Harmony` |
+| 1.2.1 | 3.0.0 **(b259) stable** | Book-set Complete on loot; sandbox Magazine Progress on loot magazines |
 
-Do not use **1.0.0** on stable **b259** if bags matter — upgrade to **1.1.0**.
+Do not use **1.0.0** on stable **b259** if bags matter — upgrade to **1.2.1** (or at least **1.1.0**).

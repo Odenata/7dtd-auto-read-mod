@@ -10,6 +10,8 @@ namespace AutoReadMod
         private static int _nextLootReadDebugId;
         private static Dictionary<string, SyntheticReadableEffects> _cachedReadableEffectsByItemName;
         private static bool _readableEffectsCacheLoaded;
+        private static Dictionary<string, HashSet<string>> _bookSetSiblingPerksBySkill;
+        private static int? _magazinePointsPerReadOverrideForTest;
         private static readonly object NerdBonusRandomGate = new object();
         private static Random NerdBonusRandom = new Random();
 
@@ -655,7 +657,14 @@ namespace AutoReadMod
             string itemName,
             string[] addProgressionNames = null,
             string[] maxProgressionNames = null,
-            string[] setCVarNames = null)
+            string[] setCVarNames = null,
+            int[] addProgressionXmlLevels = null,
+            string completeProgressionName = null,
+            string completeSkillName = null,
+            int completeRequiredCount = 0,
+            string[] bookSetSiblingPerkNames = null,
+            string readSoundName = null,
+            string bookSetCompleteSoundName = null)
         {
             if (string.IsNullOrWhiteSpace(itemName))
             {
@@ -666,7 +675,43 @@ namespace AutoReadMod
             cache[itemName] = new SyntheticReadableEffects(
                 addProgressionNames ?? new string[0],
                 maxProgressionNames ?? new string[0],
-                setCVarNames ?? new string[0]);
+                setCVarNames ?? new string[0],
+                addProgressionXmlLevels,
+                completeProgressionName,
+                completeSkillName,
+                completeRequiredCount,
+                readSoundName,
+                bookSetCompleteSoundName);
+
+            if (!string.IsNullOrWhiteSpace(completeSkillName) && bookSetSiblingPerkNames != null)
+            {
+                EnsureBookSetSiblingCache();
+                if (!_bookSetSiblingPerksBySkill.TryGetValue(completeSkillName, out var siblings))
+                {
+                    siblings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    _bookSetSiblingPerksBySkill[completeSkillName] = siblings;
+                }
+
+                for (var i = 0; i < bookSetSiblingPerkNames.Length; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(bookSetSiblingPerkNames[i]))
+                    {
+                        siblings.Add(bookSetSiblingPerkNames[i].Trim());
+                    }
+                }
+            }
+        }
+
+        /// <summary>Hermetic tests: override sandbox Magazine Progress points (null clears override).</summary>
+        internal static void SetMagazinePointsPerReadForTest(int? pointsPerRead)
+        {
+            _magazinePointsPerReadOverrideForTest = pointsPerRead;
+        }
+
+        /// <summary>Hermetic tests: grant book-set Complete perk when eligible.</summary>
+        internal static void TryGrantBookSetCompletionIfEligibleForTest(EntityAlive entity, ItemClass itemClass)
+        {
+            TryGrantBookSetCompletionIfEligible(entity, itemClass);
         }
 
         /// <summary>Hermetic tests: clear synthetic readable-effects cache.</summary>
@@ -674,6 +719,8 @@ namespace AutoReadMod
         {
             _cachedReadableEffectsByItemName = null;
             _readableEffectsCacheLoaded = false;
+            _bookSetSiblingPerksBySkill = null;
+            _magazinePointsPerReadOverrideForTest = null;
         }
 
         private static int ApplyReadableEffects(
@@ -827,9 +874,15 @@ namespace AutoReadMod
             var xmlProgressionEffectsOwnLearning = readingFromOpenLoot &&
                                                    (xmlReadableEffects.AddProgressionNames.Length > 0 ||
                                                     xmlReadableEffects.MaxProgressionNames.Length > 0);
+            var itemKindForLootEvents = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
             var shouldFireOpenLootItemEvents = readingFromOpenLoot &&
-                                               IsSkillMagazineItemClass(itemClass) &&
-                                               xmlReadableEffects.AddProgressionNames.Length > 0;
+                                               ((IsSkillMagazineItemClass(itemClass) &&
+                                                 xmlReadableEffects.AddProgressionNames.Length > 0) ||
+                                                (itemKindForLootEvents == ReadableItemKind.Book &&
+                                                 xmlReadableEffects.MaxProgressionNames.Length > 0));
+            var shouldApplyMagazineDoublePointBonus = readingFromOpenLoot &&
+                                                      IsSkillMagazineItemClass(itemClass) &&
+                                                      xmlReadableEffects.AddProgressionNames.Length > 0;
             var progressionNames = ResolveGainSkillProgressionNames(gainSkillAction, itemClass, xmlReadableEffects);
             if (gainSkillAction != null || readingFromOpenLoot || ModConfig.Instance.SkipAlreadyRead)
             {
@@ -1182,7 +1235,7 @@ namespace AutoReadMod
                             i + 1,
                             "effect entity",
                             effectEntityOpenLootEventBaseline);
-                        if (shouldFireOpenLootItemEvents)
+                        if (shouldApplyMagazineDoublePointBonus)
                         {
                             ApplyMagazineDoublePointBonusFromGameCVar(
                                 effectEntity,
@@ -1194,6 +1247,11 @@ namespace AutoReadMod
                                 effectEntityOpenLootEventBaseline);
                         }
 
+                        if (itemKindForSkip == ReadableItemKind.Book)
+                        {
+                            TryGrantBookSetCompletionIfEligible(effectEntity, itemClass);
+                        }
+
                         if (!ReferenceEquals(effectEntity, player))
                         {
                             ApplySyntheticXmlReadableEffects(
@@ -1203,7 +1261,7 @@ namespace AutoReadMod
                                 itemName,
                                 i + 1,
                                 "context player");
-                            if (shouldFireOpenLootItemEvents)
+                            if (shouldApplyMagazineDoublePointBonus)
                             {
                                 ApplyMagazineDoublePointBonusFromGameCVar(
                                     player,
@@ -1213,6 +1271,11 @@ namespace AutoReadMod
                                     i + 1,
                                     "context player",
                                     null);
+                            }
+
+                            if (itemKindForSkip == ReadableItemKind.Book)
+                            {
+                                TryGrantBookSetCompletionIfEligible(player, itemClass);
                             }
                         }
 
@@ -1249,6 +1312,7 @@ namespace AutoReadMod
                     if (consumedThisUnit > 0)
                     {
                         successfulConsumes += consumedThisUnit;
+                        TryPlayReadableUnitSound(effectEntity, itemKindForSkip, xmlReadableEffects);
                         DebugLog($"Applied effect for item {i + 1}/{effectiveCount} (stack -{consumedThisUnit})");
                     }
 
@@ -2121,7 +2185,8 @@ namespace AutoReadMod
                 }
 
                 var afterLevel = GetProgressionLevel(effectEntity, skill);
-                var targetLevel = beforeLevel + consumedUnits;
+                var pointsPerRead = GetMagazinePointsPerRead();
+                var targetLevel = beforeLevel + (consumedUnits * pointsPerRead);
                 var maxLevel = TryGetProgressionMaxLevel(GetProgressionValue(effectEntity, skill), effectEntity);
                 if (maxLevel > 0)
                 {
@@ -2155,18 +2220,77 @@ namespace AutoReadMod
             internal SyntheticReadableEffects(
                 string[] addProgressionNames,
                 string[] maxProgressionNames,
-                string[] setCVarNames)
+                string[] setCVarNames,
+                int[] addProgressionXmlLevels = null,
+                string completeProgressionName = null,
+                string completeSkillName = null,
+                int completeRequiredCount = 0,
+                string readSoundName = null,
+                string bookSetCompleteSoundName = null)
             {
                 AddProgressionNames = addProgressionNames ?? new string[0];
                 MaxProgressionNames = maxProgressionNames ?? new string[0];
                 SetCVarNames = setCVarNames ?? new string[0];
+                AddProgressionXmlLevels = NormalizeAddProgressionXmlLevels(AddProgressionNames.Length, addProgressionXmlLevels);
+                CompleteProgressionName = string.IsNullOrWhiteSpace(completeProgressionName)
+                    ? null
+                    : completeProgressionName.Trim();
+                CompleteSkillName = string.IsNullOrWhiteSpace(completeSkillName)
+                    ? null
+                    : completeSkillName.Trim();
+                CompleteRequiredCount = completeRequiredCount > 0 ? completeRequiredCount : 0;
+                ReadSoundName = string.IsNullOrWhiteSpace(readSoundName) ? null : readSoundName.Trim();
+                BookSetCompleteSoundName = string.IsNullOrWhiteSpace(bookSetCompleteSoundName)
+                    ? null
+                    : bookSetCompleteSoundName.Trim();
             }
 
             internal string[] AddProgressionNames { get; }
+            internal int[] AddProgressionXmlLevels { get; }
             internal string[] MaxProgressionNames { get; }
             internal string[] SetCVarNames { get; }
+            internal string CompleteProgressionName { get; }
+            internal string CompleteSkillName { get; }
+            internal int CompleteRequiredCount { get; }
+            internal string ReadSoundName { get; }
+            internal string BookSetCompleteSoundName { get; }
             internal bool HasAny =>
                 AddProgressionNames.Length > 0 || MaxProgressionNames.Length > 0 || SetCVarNames.Length > 0;
+            internal bool HasBookSetCompletion =>
+                !string.IsNullOrWhiteSpace(CompleteProgressionName) &&
+                !string.IsNullOrWhiteSpace(CompleteSkillName) &&
+                CompleteRequiredCount > 0;
+
+            internal int GetAddProgressionXmlLevel(int index)
+            {
+                if (index < 0 || index >= AddProgressionXmlLevels.Length)
+                {
+                    return 1;
+                }
+
+                return Math.Max(0, AddProgressionXmlLevels[index]);
+            }
+        }
+
+        private static int[] NormalizeAddProgressionXmlLevels(int nameCount, int[] levels)
+        {
+            var result = new int[Math.Max(0, nameCount)];
+            for (var i = 0; i < result.Length; i++)
+            {
+                result[i] = 1;
+            }
+
+            if (levels == null)
+            {
+                return result;
+            }
+
+            for (var i = 0; i < result.Length && i < levels.Length; i++)
+            {
+                result[i] = levels[i] > 0 ? levels[i] : 1;
+            }
+
+            return result;
         }
 
         private static string[] ResolveGainSkillProgressionNames(
@@ -2217,6 +2341,8 @@ namespace AutoReadMod
                 return;
             }
 
+            var sandboxPoints = GetMagazinePointsPerRead();
+
             for (var i = 0; i < effects.AddProgressionNames.Length; i++)
             {
                 var skill = effects.AddProgressionNames[i];
@@ -2228,30 +2354,45 @@ namespace AutoReadMod
                     baseLevel = capturedBaseLevel;
                 }
 
-                var target = baseLevel + consumedUnits;
+                var xmlLevel = effects.GetAddProgressionXmlLevel(i);
+                var pointsPerRead = Math.Max(0, xmlLevel * sandboxPoints);
+                var target = baseLevel + (consumedUnits * pointsPerRead);
                 if (before >= target)
                 {
                     LogHypothesis(
-                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: {skill} already satisfied at {before} (target {target}, base {baseLevel}) on {targetLabel}");
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: {skill} already satisfied at {before} (target {target}, base {baseLevel}, pointsPerRead {pointsPerRead}) on {targetLabel}");
                     continue;
                 }
 
-                var missingUnits = target - before;
-                var minEventOk = TryExecuteProgressionLevelMinEvent(
-                    entity,
-                    "MinEventActionAddProgressionLevel",
-                    skill,
-                    missingUnits);
+                // Vanilla only substitutes PointsPerMagazine when AddProgressionLevel level==1.
+                // Prefer one level=1 call per remaining magazine-read so Execute applies sandbox.
+                var remainingPoints = target - before;
+                var remainingReads = pointsPerRead > 0
+                    ? Math.Max(1, (int)Math.Ceiling(remainingPoints / (double)pointsPerRead))
+                    : remainingPoints;
+                var minEventOk = false;
+                for (var read = 0; read < remainingReads; read++)
+                {
+                    if (TryExecuteProgressionLevelMinEvent(
+                            entity,
+                            "MinEventActionAddProgressionLevel",
+                            skill,
+                            Math.Max(1, xmlLevel)))
+                    {
+                        minEventOk = true;
+                    }
+                }
+
                 var afterMinEvent = GetProgressionLevel(entity, skill);
                 if (minEventOk && afterMinEvent >= target)
                 {
                     LogHypothesis(
-                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: min-event raised {skill} {before}->{afterMinEvent} on {targetLabel}");
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: min-event raised {skill} {before}->{afterMinEvent} on {targetLabel} (pointsPerRead={pointsPerRead})");
                 }
                 else if (TrySetProgressionLevel(entity, skill, target))
                 {
                     LogHypothesis(
-                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: raised {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel}");
+                        $"XmlSyntheticEffects [{unitIndex}] {itemName}: raised {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel} (pointsPerRead={pointsPerRead})");
                 }
                 else
                 {
@@ -2348,6 +2489,16 @@ namespace AutoReadMod
 
             chancePercent = Math.Max(0f, Math.Min(100f, chancePercent));
 
+            var pointsPerRead = GetMagazinePointsPerRead();
+            if (pointsPerRead <= 0)
+            {
+                LogHypothesis(
+                    $"MagDoublePoint [{unitIndex}] {itemName}: skipped on {targetLabel} (PointsPerMagazine={pointsPerRead})");
+                return;
+            }
+
+            var expectedBaseDelta = consumedUnits * pointsPerRead;
+
             for (var i = 0; i < progressionNames.Length; i++)
             {
                 var skill = progressionNames[i];
@@ -2359,10 +2510,10 @@ namespace AutoReadMod
                 var before = GetProgressionLevel(entity, skill);
                 if (baseLevels != null &&
                     baseLevels.TryGetValue(skill, out var baseLevel) &&
-                    before > baseLevel + consumedUnits)
+                    before > baseLevel + expectedBaseDelta)
                 {
                     LogHypothesis(
-                        $"MagDoublePoint [{unitIndex}] {itemName}: skipped {skill} on {targetLabel}; game event already granted extra ({baseLevel}->{before})");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: skipped {skill} on {targetLabel}; game event already granted extra ({baseLevel}->{before}, expectedBaseDelta={expectedBaseDelta})");
                     continue;
                 }
 
@@ -2379,21 +2530,22 @@ namespace AutoReadMod
                     continue;
                 }
 
+                // Pass XML level=1 so vanilla Execute can apply sandbox; fallback uses full pointsPerRead.
                 var minEventOk = TryExecuteProgressionLevelMinEvent(
                     entity,
                     "MinEventActionAddProgressionLevel",
                     skill,
                     1);
                 var after = GetProgressionLevel(entity, skill);
-                if (minEventOk && after > before)
+                if (minEventOk && after >= before + pointsPerRead)
                 {
                     LogHypothesis(
-                        $"MagDoublePoint [{unitIndex}] {itemName}: granted {skill} {before}->{after} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: granted {skill} {before}->{after} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName} points={pointsPerRead}");
                 }
-                else if (TrySetProgressionLevel(entity, skill, before + 1))
+                else if (TrySetProgressionLevel(entity, skill, before + pointsPerRead))
                 {
                     LogHypothesis(
-                        $"MagDoublePoint [{unitIndex}] {itemName}: fallback granted {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName}");
+                        $"MagDoublePoint [{unitIndex}] {itemName}: fallback granted {skill} {before}->{GetProgressionLevel(entity, skill)} on {targetLabel} roll={roll:0.##} chance={chancePercent:0.##} cvar={chanceCVarName} points={pointsPerRead}");
                 }
                 else
                 {
@@ -2619,7 +2771,401 @@ namespace AutoReadMod
                 }
             }
 
+            if (effects.HasBookSetCompletion)
+            {
+                if (!IsBookPerkUnlocked(entity, effects.CompleteProgressionName))
+                {
+                    var unlocked = CountBookSetUnlockedPerks(entity, effects.CompleteSkillName);
+                    if (unlocked >= effects.CompleteRequiredCount)
+                    {
+                        // Stuck 7/7 without Complete — still need a matching book to repair.
+                        return false;
+                    }
+                }
+            }
+
             return true;
+        }
+
+        private static int GetMagazinePointsPerRead()
+        {
+            if (_magazinePointsPerReadOverrideForTest.HasValue)
+            {
+                return Math.Max(0, _magazinePointsPerReadOverrideForTest.Value);
+            }
+
+            try
+            {
+                // Vanilla MinEventActionAddProgressionLevel calls:
+                //   SandboxOptionManager.GetInt(SandboxOptions.PointsPerMagazine)
+                // as a *static* method (see IL: call, not callvirt).
+                var managerType = FindLoadedType("SandboxOptions.SandboxOptionManager")
+                                  ?? FindLoadedType("SandboxOptionManager");
+                if (managerType == null)
+                {
+                    LogHypothesis("PointsPerMagazine: SandboxOptionManager type not found; defaulting to 1");
+                    return 1;
+                }
+
+                var optionsType = FindLoadedType("SandboxOptions.SandboxOptions")
+                                  ?? FindLoadedType("SandboxOptions");
+                if (optionsType == null || !optionsType.IsEnum)
+                {
+                    LogHypothesis("PointsPerMagazine: SandboxOptions enum not found; defaulting to 1");
+                    return 1;
+                }
+
+                object pointsPerMagazineEnum;
+                try
+                {
+                    pointsPerMagazineEnum = Enum.Parse(optionsType, "PointsPerMagazine");
+                }
+                catch
+                {
+                    LogHypothesis("PointsPerMagazine: enum value missing; defaulting to 1");
+                    return 1;
+                }
+
+                var getInt = managerType.GetMethod(
+                    "GetInt",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+                    null,
+                    new[] { optionsType },
+                    null);
+                if (getInt == null)
+                {
+                    // Fallback: any static GetInt(enum)
+                    var candidates = managerType.GetMethods(
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    for (var i = 0; i < candidates.Length; i++)
+                    {
+                        var m = candidates[i];
+                        if (m.Name != "GetInt")
+                        {
+                            continue;
+                        }
+
+                        var ps = m.GetParameters();
+                        if (ps.Length == 1 && ps[0].ParameterType == optionsType)
+                        {
+                            getInt = m;
+                            break;
+                        }
+                    }
+                }
+
+                if (getInt == null)
+                {
+                    LogHypothesis("PointsPerMagazine: static GetInt not found; defaulting to 1");
+                    return 1;
+                }
+
+                var raw = getInt.Invoke(null, new[] { pointsPerMagazineEnum });
+                if (raw != null)
+                {
+                    var points = Convert.ToInt32(raw);
+                    return Math.Max(0, points);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogHypothesis($"PointsPerMagazine: read failed ({ex.GetType().Name}: {ex.Message}); defaulting to 1");
+            }
+
+            return 1;
+        }
+
+        private static void TryGrantBookSetCompletionIfEligible(EntityAlive entity, ItemClass itemClass)
+        {
+            if (entity == null || itemClass == null)
+            {
+                return;
+            }
+
+            var effects = ResolveSyntheticReadableEffects(itemClass);
+            if (effects == null || !effects.HasBookSetCompletion)
+            {
+                return;
+            }
+
+            if (IsBookPerkUnlocked(entity, effects.CompleteProgressionName))
+            {
+                return;
+            }
+
+            var unlocked = CountBookSetUnlockedPerks(entity, effects.CompleteSkillName);
+            if (unlocked < effects.CompleteRequiredCount)
+            {
+                LogHypothesis(
+                    $"BookSetComplete: {effects.CompleteProgressionName} not eligible ({unlocked}/{effects.CompleteRequiredCount} under {effects.CompleteSkillName})");
+                return;
+            }
+
+            var before = GetProgressionLevel(entity, effects.CompleteProgressionName);
+            var progressionValue = GetProgressionValue(entity, effects.CompleteProgressionName);
+            var max = TryGetProgressionMaxLevel(progressionValue, entity);
+            // Vanilla Complete uses SetProgressionLevel level=-1 (max). Prefer max when known and small
+            // (book perks are usually max_level=1); otherwise unlock at least level 1.
+            var target = max > 0 && max <= 10 ? max : Math.Max(before, 1);
+            var minEventOk = TryExecuteProgressionLevelMinEvent(
+                entity,
+                "MinEventActionSetProgressionLevel",
+                effects.CompleteProgressionName,
+                -1);
+            var afterMinEvent = GetProgressionLevel(entity, effects.CompleteProgressionName);
+            var granted = false;
+            if (minEventOk && afterMinEvent > before)
+            {
+                granted = true;
+                LogHypothesis(
+                    $"BookSetComplete: min-event set {effects.CompleteProgressionName} {before}->{afterMinEvent}");
+            }
+            else if (TrySetProgressionLevel(entity, effects.CompleteProgressionName, target))
+            {
+                granted = IsBookPerkUnlocked(entity, effects.CompleteProgressionName);
+                LogHypothesis(
+                    $"BookSetComplete: set {effects.CompleteProgressionName} {before}->{GetProgressionLevel(entity, effects.CompleteProgressionName)}");
+            }
+            else
+            {
+                LogHypothesis(
+                    $"BookSetComplete: failed setting {effects.CompleteProgressionName} from {before}");
+            }
+
+            if (granted)
+            {
+                TryPlayBookSetCompleteSound(entity, effects);
+            }
+        }
+
+        private static void TryPlayReadableUnitSound(
+            EntityAlive entity,
+            ReadableItemKind itemKind,
+            SyntheticReadableEffects effects)
+        {
+            if (!ModConfig.Instance.PlayReadSounds)
+            {
+                return;
+            }
+
+            var sound = effects?.ReadSoundName;
+            if (string.IsNullOrWhiteSpace(sound))
+            {
+                switch (itemKind)
+                {
+                    case ReadableItemKind.Book:
+                        sound = "read_skillbook";
+                        break;
+                    case ReadableItemKind.Magazine:
+                    case ReadableItemKind.Schematic:
+                    case ReadableItemKind.Recipe:
+                        sound = "read_mod";
+                        break;
+                    default:
+                        return;
+                }
+            }
+
+            TryPlayReadableSound(entity, sound);
+        }
+
+        private static void TryPlayBookSetCompleteSound(EntityAlive entity, SyntheticReadableEffects effects)
+        {
+            if (!ModConfig.Instance.PlayBookSetCompleteSound)
+            {
+                return;
+            }
+
+            var sound = effects?.BookSetCompleteSoundName;
+            if (string.IsNullOrWhiteSpace(sound))
+            {
+                sound = "read_skillbook_final";
+            }
+
+            TryPlayReadableSound(entity, sound);
+        }
+
+        /// <summary>
+        /// Play a one-shot readable cue. Vanilla non-loop PlaySound / Sound_in_head uses
+        /// <c>Audio.Manager.Play(entity, sound, 1f, false)</c>. Do not use PlayInsidePlayerHead
+        /// for these — that API expects looping <c>*_lp</c> pairs and silently returns otherwise.
+        /// </summary>
+        private static void TryPlayReadableSound(EntityAlive entity, string soundName)
+        {
+            if (string.IsNullOrWhiteSpace(soundName))
+            {
+                return;
+            }
+
+            try
+            {
+                var managerType = FindLoadedType("Audio.Manager");
+                if (managerType == null)
+                {
+                    LogHypothesis($"Audio: Audio.Manager type not found for {soundName}");
+                    return;
+                }
+
+                // Prefer entity-attached Play (matches MinEventActionPlaySound non-loop path).
+                if (entity != null)
+                {
+                    MethodInfo playEntity = null;
+                    var methods = managerType.GetMethods(BindingFlags.Public | BindingFlags.Static);
+                    for (var i = 0; i < methods.Length; i++)
+                    {
+                        var method = methods[i];
+                        if (method.Name != "Play")
+                        {
+                            continue;
+                        }
+
+                        var parameters = method.GetParameters();
+                        if (parameters.Length == 4 &&
+                            typeof(EntityAlive).IsAssignableFrom(parameters[0].ParameterType) &&
+                            parameters[1].ParameterType == typeof(string) &&
+                            parameters[2].ParameterType == typeof(float) &&
+                            parameters[3].ParameterType == typeof(bool))
+                        {
+                            playEntity = method;
+                            break;
+                        }
+                    }
+
+                    // Game API declares Play(Entity, ...) — EntityAlive is assignable at invoke time.
+                    if (playEntity == null)
+                    {
+                        for (var i = 0; i < methods.Length; i++)
+                        {
+                            var method = methods[i];
+                            if (method.Name != "Play")
+                            {
+                                continue;
+                            }
+
+                            var parameters = method.GetParameters();
+                            if (parameters.Length == 4 &&
+                                parameters[0].ParameterType.Name == "Entity" &&
+                                parameters[1].ParameterType == typeof(string) &&
+                                parameters[2].ParameterType == typeof(float) &&
+                                parameters[3].ParameterType == typeof(bool))
+                            {
+                                playEntity = method;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (playEntity != null)
+                    {
+                        playEntity.Invoke(null, new object[] { entity, soundName, 1f, false });
+                        LogHypothesis($"Audio: Play(entity,{soundName})");
+                        return;
+                    }
+                }
+
+                var broadcastLocal = managerType.GetMethod(
+                    "BroadcastPlayByLocalPlayer",
+                    BindingFlags.Public | BindingFlags.Static);
+                if (broadcastLocal != null && entity != null)
+                {
+                    var position = GameReflection.GetMemberValue<object>(entity, "position")
+                                   ?? GameReflection.GetMemberValue<object>(entity, "Position");
+                    if (position != null)
+                    {
+                        broadcastLocal.Invoke(null, new[] { position, soundName });
+                        LogHypothesis($"Audio: BroadcastPlayByLocalPlayer({soundName})");
+                        return;
+                    }
+                }
+
+                var broadcast = managerType.GetMethod(
+                    "BroadcastPlay",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null,
+                    new[] { typeof(string) },
+                    null);
+                if (broadcast != null)
+                {
+                    broadcast.Invoke(null, new object[] { soundName });
+                    LogHypothesis($"Audio: BroadcastPlay({soundName})");
+                    return;
+                }
+
+                LogHypothesis($"Audio: no usable play method for {soundName}");
+            }
+            catch (Exception ex)
+            {
+                var root = UnwrapReflectionException(ex);
+                LogHypothesis($"Audio: play failed for {soundName} ({root.GetType().Name}: {root.Message})");
+            }
+        }
+
+        private static int CountBookSetUnlockedPerks(EntityAlive entity, string skillName)
+        {
+            if (entity == null || string.IsNullOrWhiteSpace(skillName))
+            {
+                return 0;
+            }
+
+            EnsureBookSetSiblingCache();
+            if (_bookSetSiblingPerksBySkill == null ||
+                !_bookSetSiblingPerksBySkill.TryGetValue(skillName, out var siblings) ||
+                siblings == null ||
+                siblings.Count == 0)
+            {
+                return 0;
+            }
+
+            var unlocked = 0;
+            foreach (var perk in siblings)
+            {
+                if (IsBookPerkUnlocked(entity, perk))
+                {
+                    unlocked++;
+                }
+            }
+
+            return unlocked;
+        }
+
+        /// <summary>
+        /// Book-set / PerksUnlocked semantics: any level ≥ 1 counts as unlocked
+        /// (vanilla book perks are typically max_level=1).
+        /// </summary>
+        private static bool IsBookPerkUnlocked(EntityAlive entity, string skill)
+        {
+            return GetProgressionLevel(entity, skill) >= 1;
+        }
+
+        private static void EnsureBookSetSiblingCache()
+        {
+            if (_bookSetSiblingPerksBySkill == null)
+            {
+                _bookSetSiblingPerksBySkill = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private static void RegisterBookSetSiblingPerks(string skillName, string[] perkNames)
+        {
+            if (string.IsNullOrWhiteSpace(skillName) || perkNames == null || perkNames.Length == 0)
+            {
+                return;
+            }
+
+            EnsureBookSetSiblingCache();
+            if (!_bookSetSiblingPerksBySkill.TryGetValue(skillName, out var siblings))
+            {
+                siblings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _bookSetSiblingPerksBySkill[skillName] = siblings;
+            }
+
+            for (var i = 0; i < perkNames.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(perkNames[i]))
+                {
+                    siblings.Add(perkNames[i].Trim());
+                }
+            }
         }
 
         private static bool IsProgressionAtKnownMax(EntityAlive entity, string skill)
@@ -2948,6 +3494,8 @@ namespace AutoReadMod
 
             _readableEffectsCacheLoaded = true;
             _cachedReadableEffectsByItemName = new Dictionary<string, SyntheticReadableEffects>(StringComparer.OrdinalIgnoreCase);
+            EnsureBookSetSiblingCache();
+            _bookSetSiblingPerksBySkill.Clear();
 
             var itemsXmlPath = FindGameItemsXmlPath();
             if (string.IsNullOrEmpty(itemsXmlPath))
@@ -2975,16 +3523,52 @@ namespace AutoReadMod
                     }
 
                     var addProgressions = new List<string>();
+                    var addProgressionLevelByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                     var maxProgressions = new List<string>();
                     var setCVars = new List<string>();
-                    AddXmlReadableEffects(item, addProgressions, maxProgressions, setCVars);
+                    string completeProgressionName = null;
+                    string completeSkillName = null;
+                    var completeRequiredCount = 0;
+                    string readSoundName = null;
+                    string bookSetCompleteSoundName = null;
+                    AddXmlReadableEffects(
+                        item,
+                        addProgressions,
+                        addProgressionLevelByName,
+                        maxProgressions,
+                        setCVars,
+                        ref completeProgressionName,
+                        ref completeSkillName,
+                        ref completeRequiredCount,
+                        ref readSoundName,
+                        ref bookSetCompleteSoundName);
                     AddVanillaNameHeuristicEffects(name, addProgressions, maxProgressions, setCVars);
 
+                    var uniqueAdds = UniqueStrings(addProgressions);
+                    var addLevels = new int[uniqueAdds.Length];
+                    for (var i = 0; i < uniqueAdds.Length; i++)
+                    {
+                        addLevels[i] = addProgressionLevelByName.TryGetValue(uniqueAdds[i], out var xmlLevel) && xmlLevel > 0
+                            ? xmlLevel
+                            : 1;
+                    }
+
                     var effects = new SyntheticReadableEffects(
-                        UniqueStrings(addProgressions),
+                        uniqueAdds,
                         UniqueStrings(maxProgressions),
-                        UniqueStrings(setCVars, normalizeToLower: false));
-                    if (effects.HasAny)
+                        UniqueStrings(setCVars, normalizeToLower: false),
+                        addLevels,
+                        completeProgressionName,
+                        completeSkillName,
+                        completeRequiredCount,
+                        readSoundName,
+                        bookSetCompleteSoundName);
+                    if (effects.HasBookSetCompletion)
+                    {
+                        RegisterBookSetSiblingPerks(effects.CompleteSkillName, effects.MaxProgressionNames);
+                    }
+
+                    if (effects.HasAny || effects.HasBookSetCompletion)
                     {
                         _cachedReadableEffectsByItemName[name.Trim()] = effects;
                     }
@@ -3062,8 +3646,14 @@ namespace AutoReadMod
         private static void AddXmlReadableEffects(
             XmlElement item,
             List<string> addProgressions,
+            Dictionary<string, int> addProgressionLevelByName,
             List<string> maxProgressions,
-            List<string> setCVars)
+            List<string> setCVars,
+            ref string completeProgressionName,
+            ref string completeSkillName,
+            ref int completeRequiredCount,
+            ref string readSoundName,
+            ref string bookSetCompleteSoundName)
         {
             foreach (XmlElement property in item.SelectNodes("property"))
             {
@@ -3080,7 +3670,7 @@ namespace AutoReadMod
                     var unlock = parts[i].Trim();
                     if (unlock.StartsWith("crafting", StringComparison.OrdinalIgnoreCase))
                     {
-                        AddProgressionName(addProgressions, unlock);
+                        AddProgressionNameWithXmlLevel(addProgressions, addProgressionLevelByName, unlock, 1);
                     }
                     else if (unlock.StartsWith("perk", StringComparison.OrdinalIgnoreCase))
                     {
@@ -3093,15 +3683,23 @@ namespace AutoReadMod
                 }
             }
 
+            foreach (XmlElement action in item.SelectNodes("property[@class='Action0']/property"))
+            {
+                if (string.Equals(action.GetAttribute("name"), "Sound_start", StringComparison.OrdinalIgnoreCase))
+                {
+                    var sound = action.GetAttribute("value");
+                    if (!string.IsNullOrWhiteSpace(sound))
+                    {
+                        readSoundName = sound.Trim();
+                    }
+                }
+            }
+
             foreach (XmlElement effectGroup in item.SelectNodes("effect_group"))
             {
-                // Skip conditional groups (requirement / requirement_group on the effect_group itself).
-                // Nested requirements on individual triggered_effect nodes are fine — those are still
-                // the item's primary unlock effects in vanilla books (ProgressionLevel Equals 0).
-                if (EffectGroupHasTopLevelRequirement(effectGroup))
-                {
-                    continue;
-                }
+                // Skip conditional groups for unconditional synthetic grants, but still parse nested
+                // Complete / PerksUnlocked metadata (book set 8th perk).
+                var skipUnconditionalGrants = EffectGroupHasTopLevelRequirement(effectGroup);
 
                 foreach (XmlElement effect in effectGroup.SelectNodes("triggered_effect"))
                 {
@@ -3111,13 +3709,50 @@ namespace AutoReadMod
                         continue;
                     }
 
+                    TryExtractBookSetCompleteMetadata(
+                        effect,
+                        ref completeProgressionName,
+                        ref completeSkillName,
+                        ref completeRequiredCount);
+
                     var action = effect.GetAttribute("action");
+                    if (string.Equals(action, "PlaySound", StringComparison.OrdinalIgnoreCase) &&
+                        TriggeredEffectHasPerksUnlockedRequirement(effect))
+                    {
+                        var sound = effect.GetAttribute("sound");
+                        if (!string.IsNullOrWhiteSpace(sound))
+                        {
+                            bookSetCompleteSoundName = sound.Trim();
+                        }
+                    }
+
+                    if (skipUnconditionalGrants)
+                    {
+                        continue;
+                    }
+
                     if (string.Equals(action, "AddProgressionLevel", StringComparison.OrdinalIgnoreCase))
                     {
-                        AddProgressionName(addProgressions, effect.GetAttribute("progression_name"));
+                        var progressionName = effect.GetAttribute("progression_name");
+                        if (string.IsNullOrWhiteSpace(progressionName))
+                        {
+                            continue;
+                        }
+
+                        AddProgressionNameWithXmlLevel(
+                            addProgressions,
+                            addProgressionLevelByName,
+                            progressionName,
+                            ParsePositiveIntAttribute(effect.GetAttribute("level"), 1));
                     }
                     else if (string.Equals(action, "SetProgressionLevel", StringComparison.OrdinalIgnoreCase))
                     {
+                        // Never treat Complete (gated by PerksUnlocked) as an unconditional max unlock.
+                        if (TriggeredEffectHasPerksUnlockedRequirement(effect))
+                        {
+                            continue;
+                        }
+
                         AddProgressionName(maxProgressions, effect.GetAttribute("progression_name"));
                     }
                     else if (string.Equals(action, "ModifyCVar", StringComparison.OrdinalIgnoreCase) &&
@@ -3131,6 +3766,105 @@ namespace AutoReadMod
                     }
                 }
             }
+        }
+
+        private static void AddProgressionNameWithXmlLevel(
+            List<string> names,
+            Dictionary<string, int> levelByName,
+            string candidate,
+            int xmlLevel)
+        {
+            if (names == null || string.IsNullOrWhiteSpace(candidate))
+            {
+                return;
+            }
+
+            var beforeCount = names.Count;
+            AddProgressionName(names, candidate);
+            if (names.Count == beforeCount || levelByName == null)
+            {
+                return;
+            }
+
+            var key = names[names.Count - 1];
+            levelByName[key] = xmlLevel > 0 ? xmlLevel : 1;
+        }
+
+        private static void TryExtractBookSetCompleteMetadata(
+            XmlElement effect,
+            ref string completeProgressionName,
+            ref string completeSkillName,
+            ref int completeRequiredCount)
+        {
+            if (effect == null)
+            {
+                return;
+            }
+
+            var action = effect.GetAttribute("action");
+            if (!string.Equals(action, "SetProgressionLevel", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var progressionName = effect.GetAttribute("progression_name");
+            if (string.IsNullOrWhiteSpace(progressionName))
+            {
+                return;
+            }
+
+            foreach (XmlElement requirement in effect.SelectNodes("requirement"))
+            {
+                if (!string.Equals(requirement.GetAttribute("name"), "PerksUnlocked", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var skillName = requirement.GetAttribute("skill_name");
+                var required = ParsePositiveIntAttribute(requirement.GetAttribute("value"), 0);
+                if (string.IsNullOrWhiteSpace(skillName) || required <= 0)
+                {
+                    continue;
+                }
+
+                completeProgressionName = progressionName.Trim();
+                completeSkillName = skillName.Trim();
+                completeRequiredCount = required;
+                return;
+            }
+        }
+
+        private static bool TriggeredEffectHasPerksUnlockedRequirement(XmlElement effect)
+        {
+            if (effect == null)
+            {
+                return false;
+            }
+
+            foreach (XmlElement requirement in effect.SelectNodes("requirement"))
+            {
+                if (string.Equals(requirement.GetAttribute("name"), "PerksUnlocked", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int ParsePositiveIntAttribute(string raw, int fallback)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return fallback;
+            }
+
+            if (int.TryParse(raw.Trim(), out var parsed) && parsed > 0)
+            {
+                return parsed;
+            }
+
+            return fallback;
         }
 
         private static bool EffectGroupHasTopLevelRequirement(XmlElement effectGroup)
@@ -3518,13 +4252,15 @@ namespace AutoReadMod
             }
 
             var under = new List<string>();
+            var pointsPerRead = GetMagazinePointsPerRead();
+            var expectedDelta = successfulConsumes * Math.Max(0, pointsPerRead);
             foreach (var kv in beforeSnap)
             {
                 var name = kv.Key;
                 var before = kv.Value;
                 var after = GetProgressionLevel(entity, name);
                 var delta = after - before;
-                if (delta > 0 && delta < successfulConsumes)
+                if (delta > 0 && delta < expectedDelta)
                 {
                     under.Add(name);
                 }
@@ -3565,11 +4301,11 @@ namespace AutoReadMod
                 return;
             }
 
-            var target = beforeLevel + successfulConsumes;
+            var target = beforeLevel + expectedDelta;
             if (TrySetProgressionLevel(entity, fix, target))
             {
                 LogHypothesis(
-                    $"QuickListReconcile [{unitIndex}] {itemName}: adjusted {fix} to {target} (was {beforeLevel}, consumed={successfulConsumes})");
+                    $"QuickListReconcile [{unitIndex}] {itemName}: adjusted {fix} to {target} (was {beforeLevel}, consumed={successfulConsumes}, pointsPerRead={pointsPerRead})");
             }
             else
             {

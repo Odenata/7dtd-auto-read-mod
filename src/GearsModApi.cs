@@ -15,6 +15,7 @@ namespace AutoReadMod
         private const string WorldCategory = "Behavior";
         private const string GlobalTab = "Client";
         private const string GlobalCategoryDebug = "Debug";
+        private const string GlobalCategoryAudio = "Audio";
         private const string GlobalCategoryViz = "Visualization";
 
         private static IModWorldSettings worldSettings;
@@ -107,9 +108,12 @@ namespace AutoReadMod
 
             var config = ModConfig.Instance;
             var debugCat = tab.GetCategory(GlobalCategoryDebug);
+            var audioCat = tab.GetCategory(GlobalCategoryAudio);
             var vizCat = tab.GetCategory(GlobalCategoryViz);
 
             bool debugMode = config.DebugMode;
+            bool playReadSounds = config.PlayReadSounds;
+            bool playBookSetCompleteSound = config.PlayBookSetCompleteSound;
             bool vizEnabled = config.VisualizationEnabled;
             int maxVisible = config.VisualizationMaxVisible;
             Color book = config.VisualizationColorBook;
@@ -119,6 +123,12 @@ namespace AutoReadMod
 
             if (debugCat != null)
                 debugMode = ReadGlobalBool(debugCat, "DebugMode", debugMode);
+
+            if (audioCat != null)
+            {
+                playReadSounds = ReadGlobalBool(audioCat, "PlayReadSounds", playReadSounds);
+                playBookSetCompleteSound = ReadGlobalBool(audioCat, "PlayBookSetCompleteSound", playBookSetCompleteSound);
+            }
 
             if (vizCat != null)
             {
@@ -130,7 +140,16 @@ namespace AutoReadMod
                 schematic = ReadGlobalColor(vizCat, "ColorSchematic", schematic);
             }
 
-            config.ApplyGlobalSettings(debugMode, vizEnabled, maxVisible, book, magazine, recipe, schematic);
+            config.ApplyGlobalSettings(
+                debugMode,
+                vizEnabled,
+                maxVisible,
+                book,
+                magazine,
+                recipe,
+                schematic,
+                playReadSounds,
+                playBookSetCompleteSound);
         }
 
         private static void AttachGlobalListeners(IModGlobalSettings settings)
@@ -155,6 +174,18 @@ namespace AutoReadMod
                 if (category == GlobalCategoryDebug && name == "DebugMode")
                 {
                     config.DebugMode = ModConfig.ParseBoolSetting(newValue, config.DebugMode);
+                }
+                else if (category == GlobalCategoryAudio)
+                {
+                    switch (name)
+                    {
+                        case "PlayReadSounds":
+                            config.PlayReadSounds = ModConfig.ParseBoolSetting(newValue, config.PlayReadSounds);
+                            break;
+                        case "PlayBookSetCompleteSound":
+                            config.PlayBookSetCompleteSound = ModConfig.ParseBoolSetting(newValue, config.PlayBookSetCompleteSound);
+                            break;
+                    }
                 }
                 else if (category == GlobalCategoryViz)
                 {

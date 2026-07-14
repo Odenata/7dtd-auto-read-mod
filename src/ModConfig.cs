@@ -20,6 +20,10 @@ namespace AutoReadMod
         public bool ReadMagazines { get; set; } = true;
         public bool ReadSchematics { get; set; } = true;
         public bool DebugMode { get; set; } = false;
+        /// <summary>Client: play vanilla-style read sounds on each auto-read unit.</summary>
+        public bool PlayReadSounds { get; set; } = true;
+        /// <summary>Client: play book-set Complete sound (e.g. read_skillbook_final).</summary>
+        public bool PlayBookSetCompleteSound { get; set; } = true;
 
         // Visualization (splash when items are auto-read)
         public bool VisualizationEnabled { get; set; } = true;
@@ -71,7 +75,9 @@ namespace AutoReadMod
             Color colorBook,
             Color colorMagazine,
             Color colorRecipe,
-            Color colorSchematic)
+            Color colorSchematic,
+            bool playReadSounds = true,
+            bool playBookSetCompleteSound = true)
         {
             DebugMode = debugMode;
             VisualizationEnabled = visualizationEnabled;
@@ -81,6 +87,8 @@ namespace AutoReadMod
             VisualizationColorMagazine = colorMagazine;
             VisualizationColorRecipe = colorRecipe;
             VisualizationColorSchematic = colorSchematic;
+            PlayReadSounds = playReadSounds;
+            PlayBookSetCompleteSound = playBookSetCompleteSound;
         }
 
         /// <summary>
@@ -106,6 +114,11 @@ namespace AutoReadMod
                 sb.AppendLine($"  <SkipAlreadyRead>{BoolXml(SkipAlreadyRead)}</SkipAlreadyRead>");
                 sb.AppendLine("  <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->");
                 sb.AppendLine($"  <DebugMode>{BoolXml(DebugMode)}</DebugMode>");
+                sb.AppendLine("  <!-- Client audio cues when auto-reading. Values: true, false -->");
+                sb.AppendLine("  <Audio>");
+                sb.AppendLine($"    <PlayReadSounds>{BoolXml(PlayReadSounds)}</PlayReadSounds>");
+                sb.AppendLine($"    <PlayBookSetCompleteSound>{BoolXml(PlayBookSetCompleteSound)}</PlayBookSetCompleteSound>");
+                sb.AppendLine("  </Audio>");
                 sb.AppendLine("  <!-- Which item types to auto-read when you open loot. Set to false to skip that type. Values: true, false -->");
                 sb.AppendLine("  <ItemTypes>");
                 sb.AppendLine($"    <Books>{BoolXml(ReadBooks)}</Books>");
@@ -264,6 +277,14 @@ namespace AutoReadMod
                 if (debugNode != null)
                     config.DebugMode = bool.Parse(debugNode.InnerText);
 
+                var playReadSoundsNode = doc.SelectSingleNode("//Audio/PlayReadSounds");
+                if (playReadSoundsNode != null)
+                    config.PlayReadSounds = bool.Parse(playReadSoundsNode.InnerText);
+
+                var playCompleteSoundNode = doc.SelectSingleNode("//Audio/PlayBookSetCompleteSound");
+                if (playCompleteSoundNode != null)
+                    config.PlayBookSetCompleteSound = bool.Parse(playCompleteSoundNode.InnerText);
+
                 var visEnabledNode = doc.SelectSingleNode("//Visualization/Enabled");
                 if (visEnabledNode != null)
                     config.VisualizationEnabled = bool.Parse(visEnabledNode.InnerText);
@@ -309,6 +330,11 @@ namespace AutoReadMod
   <SkipAlreadyRead>false</SkipAlreadyRead>
   <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
   <DebugMode>false</DebugMode>
+  <!-- Client audio cues when auto-reading. Values: true, false -->
+  <Audio>
+    <PlayReadSounds>true</PlayReadSounds>
+    <PlayBookSetCompleteSound>true</PlayBookSetCompleteSound>
+  </Audio>
   <!-- Which item types to auto-read when you open loot. Set to false to skip that type. Values: true, false -->
   <ItemTypes>
     <Books>true</Books>

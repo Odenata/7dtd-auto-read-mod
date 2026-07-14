@@ -63,9 +63,16 @@ function Get-SafeArchiveLabel([string]$raw) {
 
 $modLabel = Get-SafeArchiveLabel $version
 
-$defaultDll = Join-Path $ModRepoRoot "src\bin\$Configuration\net472\AutoReadMod.dll"
+$bazelDll = Join-Path $ModRepoRoot "bazel-bin\src\AutoReadMod.dll"
+$msbuildDll = Join-Path $ModRepoRoot "src\bin\$Configuration\net472\AutoReadMod.dll"
 if ([string]::IsNullOrWhiteSpace($DllPath)) {
-  $DllPath = $defaultDll
+  # Prefer the hermetic Bazel output (same as deploy.ps1). Falling back to the
+  # MSBuild path alone previously packaged a stale DLL with a fresh ModInfo.
+  if (Test-Path $bazelDll) {
+    $DllPath = $bazelDll
+  } else {
+    $DllPath = $msbuildDll
+  }
 }
 
 if ($Build -or -not (Test-Path $DllPath)) {
@@ -76,8 +83,12 @@ if ($Build -or -not (Test-Path $DllPath)) {
   }
   & $buildScript -Configuration $Configuration
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  if ([string]::IsNullOrWhiteSpace($DllPath) -or $DllPath -eq $defaultDll) {
-    $DllPath = $defaultDll
+  if (-not (Test-Path $DllPath)) {
+    if (Test-Path $bazelDll) {
+      $DllPath = $bazelDll
+    } elseif (Test-Path $msbuildDll) {
+      $DllPath = $msbuildDll
+    }
   }
 }
 

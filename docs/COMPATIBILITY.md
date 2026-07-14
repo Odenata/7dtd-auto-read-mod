@@ -15,6 +15,10 @@ Use this table to see which **7 Days to Die** builds work with which **mod** ver
 | 1.0.1       | 3.0.0 (b259) stable               | Verified against official stable (Steam). Adds entity bag / non-static loot via `XUiC_BagContainer.SetBag`. Install requires EAC off. Server and clients need the same mod version. |
 | 1.0.2       | 3.0.0 (b259) stable               | INT Mastery Photographic Memory loot double-point fix; opt-in `<SkipAlreadyRead>` (default false). Same bag/loot hooks as 1.0.1. |
 | 1.1.0       | 3.0.0 (b259) stable               | No longer ships `0Harmony.dll`. Requires the game's official `Mods\0_TFP_Harmony`. Install folder is DLL + ModInfo + Config only. |
+| 1.2.0       | 3.0.0 (b259) stable               | Optional Gears settings UI; HarmonyX compile alignment. Same install layout as 1.1.0. |
+| 1.2.1       | 3.0.0 (b259) stable               | Loot book-set Complete perk unlock; loot magazines honor sandbox Magazine Progress (`PointsPerMagazine`) for base and Nerd/INT bonus grants. |
+| 1.2.2       | 3.0.0 (b259) stable               | Fix Magazine Progress read (static `GetInt`); client-configurable read / book-set-complete audio. |
+| 1.2.3       | 3.0.0 (b259) stable               | Auto-read audio cues actually play via `Audio.Manager.Play`. |
 
 
 

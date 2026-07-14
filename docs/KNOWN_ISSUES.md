@@ -40,6 +40,20 @@ When a **Nerd Outfit** or **INT Mastery Photographic Memory** bonus triggers dur
 
 Nice-to-have follow-up: add a dedicated notification or decorate the existing notification when the bonus roll grants an extra point.
 
+## Resolved: book set Complete perk missing on loot auto-read (fixed in 1.2.1)
+
+**Before 1.2.1**, auto-reading the last book of a set from an open loot container unlocked the individual book perk but not the set’s Complete perk (for example `perkFiremansAlmanacComplete`). Loot skipped book `onSelfPrimaryActionEnd` event firing used by vanilla for the Complete unlock.
+
+**Fix in 1.2.1:** loot books fire the same end-of-read item events as magazines, and the mod grants Complete when enough set perks are unlocked (also repairs already-stuck 7/7 characters when a matching book is auto-read). With `SkipAlreadyRead`, a set that is missing Complete is still consumed for repair.
+
+## Resolved: sandbox Magazine Progress ignored on loot magazines (fixed in 1.2.1)
+
+**Before 1.2.1**, loot auto-read assumed **+1** crafting skill level per magazine regardless of the sandbox **Magazine Progress** (`PointsPerMagazine`) setting. Nerd Outfit / Photographic Memory bonus grants were also hardcoded to +1.
+
+**Fix in 1.2.1 / 1.2.2:** base and bonus magazine grants use `xmlLevel × PointsPerMagazine` (vanilla default sandbox value is 1). Example: sandbox 5 with a successful bonus roll grants **5 + 5 = 10**.
+
+**1.2.2:** correctly calls the game’s **static** `SandboxOptionManager.GetInt(PointsPerMagazine)` (1.2.1 attempted an instance call and silently fell back to 1).
+
 ## Resolved: loot open spammed `InvalidCastException` / toolbelt XUi errors (fixed in mod)
 
 Opening a loot container with readables could flood the log with **`InvalidCastException: Specified cast is not valid`** from **`ItemActionEat.OnHoldingUpdate`** / **`IsActionRunning`** and **`[XUi] Error while updating window group 'toolbelt'`**.

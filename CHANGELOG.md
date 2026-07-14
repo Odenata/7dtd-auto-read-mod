@@ -4,6 +4,22 @@ All notable **AutoReadMod** releases. Draft notes live in [`docs/releases/unrele
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] - 2026-07-14
+
+### Added
+
+- Optional client audio: normal read sounds and book-set Complete cue (`Config.xml` / Gears Client → Audio; both default on).
+
+### Fixed
+
+- Loot auto-read now unlocks a book set’s Complete perk (8th unlock) when the last book in the set is read, and can repair characters stuck at 7/7 without Complete.
+- Loot magazine skill grants respect the sandbox **Magazine Progress** (`PointsPerMagazine`) setting for the base grant and for Nerd Outfit / Photographic Memory bonus grants.
+
+### Notes
+
+- Audio uses vanilla one-shot `Audio.Manager.Play(entity, …)` (not `PlayInsidePlayerHead`).
+- Magazine Progress is read via static `SandboxOptionManager.GetInt(PointsPerMagazine)`.
+
 ## [1.2.0] - 2026-07-13
 
 ### Added

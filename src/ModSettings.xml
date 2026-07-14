@@ -17,6 +17,10 @@
       <Category name="Debug" displayKey="armCategoryDebug" tooltipKey="armCategoryDebugTip">
         <Switch name="DebugMode" displayKey="armDebugMode" tooltipKey="armDebugModeTip" defaultValue="false" leftValue="false" rightValue="true" />
       </Category>
+      <Category name="Audio" displayKey="armCategoryAudio" tooltipKey="armCategoryAudioTip">
+        <Switch name="PlayReadSounds" displayKey="armPlayReadSounds" tooltipKey="armPlayReadSoundsTip" defaultValue="true" leftValue="false" rightValue="true" />
+        <Switch name="PlayBookSetCompleteSound" displayKey="armPlayBookSetCompleteSound" tooltipKey="armPlayBookSetCompleteSoundTip" defaultValue="true" leftValue="false" rightValue="true" />
+      </Category>
       <Category name="Visualization" displayKey="armCategoryVisualization" tooltipKey="armCategoryVisualizationTip">
         <Switch name="Enabled" displayKey="armVizEnabled" tooltipKey="armVizEnabledTip" defaultValue="true" leftValue="false" rightValue="true" />
         <Slider name="MaxVisible" displayKey="armVizMaxVisible" tooltipKey="armVizMaxVisibleTip" defaultValue="8">
