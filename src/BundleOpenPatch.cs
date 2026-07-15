@@ -49,7 +49,7 @@ namespace AutoReadMod
 
         internal static InventorySnapshot CaptureInventorySnapshot(EntityAlive entity)
         {
-            if (!ModConfig.Instance.Enabled)
+            if (!ModConfig.Instance.Enabled || ModConfig.Instance.ReadOnInventoryAdd)
             {
                 return null;
             }
@@ -118,6 +118,11 @@ namespace AutoReadMod
         internal static void ApplyOpenedBundleEffectsImmediately(EntityPlayer player, InventorySnapshot beforeSnapshot)
         {
             if (beforeSnapshot == null || player == null)
+            {
+                return;
+            }
+
+            if (ModConfig.Instance.ReadOnInventoryAdd)
             {
                 return;
             }

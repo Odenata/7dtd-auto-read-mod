@@ -4,6 +4,21 @@ All notable **AutoReadMod** releases. Draft notes live in [`docs/releases/unrele
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-07-15
+
+### Added
+
+- **Read When Taken** (World Behavior / `ReadOnInventoryAdd`, default off): leave readables visible in open loot and entity bags; auto-read when they enter your inventory (taking loot, ground pickups, quest/trader rewards, and bundles). Supports shift-click and drag-and-drop into the backpack/toolbelt.
+
+### Fixed
+
+- Inventory-add mode: toolbelt `InvalidCastException` spam when auto-reading backpack stacks (bag slot indices were incorrectly used as hotbar slot indices).
+- Inventory-add mode: ground pickups and controller-less transfers now apply book perks, magazine skill / INT bonus rolls, and schematic unlocks (not only consume + sound).
+
+### Notes
+
+- Inventory-add mode still auto-reads bundle contents immediately (bundles have no loot preview UI). Same mode also auto-reads quest/trader/admin grants and ground pickups by design.
+
 ## [1.2.3] - 2026-07-14
 
 ### Added

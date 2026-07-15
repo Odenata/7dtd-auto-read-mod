@@ -19,6 +19,7 @@ Use this table to see which **7 Days to Die** builds work with which **mod** ver
 | 1.2.1       | 3.0.0 (b259) stable               | Loot book-set Complete perk unlock; loot magazines honor sandbox Magazine Progress (`PointsPerMagazine`) for base and Nerd/INT bonus grants. |
 | 1.2.2       | 3.0.0 (b259) stable               | Fix Magazine Progress read (static `GetInt`); client-configurable read / book-set-complete audio. |
 | 1.2.3       | 3.0.0 (b259) stable               | Auto-read audio cues actually play via `Audio.Manager.Play`. |
+| 1.3.0       | 3.0.0 (b259) stable               | Optional World **Read When Taken** (`ReadOnInventoryAdd`): auto-read on inventory ingress instead of open loot. |
 
 
 

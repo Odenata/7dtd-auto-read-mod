@@ -1,10 +1,11 @@
 # Auto Read Mod
 
-Auto Read Mod automatically reads books, magazines, schematics, and recipes when you open a loot container in 7 Days to Die.
+Auto Read Mod automatically reads books, magazines, schematics, and recipes when you open a loot container in 7 Days to Die. An optional **Read When Taken** World setting leaves readables in open loot until you take them into inventory (also covers ground pickups).
 
 ## Features
 
-- Automatically consumes readable loot when containers open.
+- Automatically consumes readable loot when containers open (default).
+- Optional **Read When Taken**: auto-read on inventory ingress instead of on open loot.
 - Supports books, magazines, schematics, and recipes.
 - Configurable item-type toggles in `Config.xml`.
 - Optional in-game settings via [Gears](https://www.nexusmods.com/7daystodie/mods/4017) + [Quartz](https://www.nexusmods.com/7daystodie/mods/2409) (World-synced behavior; client visualization).

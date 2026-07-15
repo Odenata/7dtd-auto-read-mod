@@ -99,6 +99,12 @@ namespace AutoReadMod
                 return;
             }
 
+            if (ModConfig.Instance.ReadOnInventoryAdd)
+            {
+                DebugLog("ReadOnInventoryAdd: skip ProcessContainer (inventory ingress owns auto-read)");
+                return;
+            }
+
             var items = ContainerOpenPatchShared.TryGetLootItems(container);
             if (player == null || items == null)
             {
@@ -264,6 +270,12 @@ namespace AutoReadMod
                 return;
             }
 
+            if (ModConfig.Instance.ReadOnInventoryAdd)
+            {
+                DebugLog("ReadOnInventoryAdd: skip ProcessEntityLootBag (inventory ingress owns auto-read)");
+                return;
+            }
+
             var slots = GameReflection.GetBagSlots(bag);
             if (player == null || slots == null)
             {
@@ -292,6 +304,436 @@ namespace AutoReadMod
                     bundleReadFromBag: false,
                     readingFromOpenContainer: true);
             }
+        }
+
+        /// <summary>
+        /// Inventory-add World mode: auto-read a readable that just landed in the local player's
+        /// toolbelt or backpack. Uses the same real-slot Eat path as bundles (not open-loot synthetic).
+        /// </summary>
+        /// <returns>True when a read was attempted on a located stack.</returns>
+        internal static bool TryAutoReadInventoryIngress(
+            EntityPlayer player,
+            ItemStack hintStack,
+            int preferredSlot = -1,
+            int acceptedCount = -1,
+            bool preferBag = false)
+        {
+            GearsModApi.SyncWorldSettingsIfLoaded();
+            if (!ModConfig.Instance.Enabled || !ModConfig.Instance.ReadOnInventoryAdd)
+            {
+                return false;
+            }
+
+            if (player == null || hintStack == null)
+            {
+                return false;
+            }
+
+            if (!InventoryAddPatchShared.TryEnterIngress())
+            {
+                DebugLog("TryAutoReadInventoryIngress: skipped (re-entrant)");
+                return false;
+            }
+
+            try
+            {
+                var inventory = GameReflection.GetInventory(player);
+                var bag = GameReflection.GetBag(player);
+                if (inventory == null && bag == null)
+                {
+                    return false;
+                }
+
+                // Prefer classifying the hint when it still has items; empty hint still allows preferred-slot / name lookup.
+                if (!hintStack.IsEmpty()
+                    && ClassifyReadableItem(hintStack) == ReadableItemKind.None
+                    && preferredSlot < 0)
+                {
+                    return false;
+                }
+
+                if (!TryLocateInventoryIngressStack(
+                        player,
+                        inventory,
+                        bag,
+                        hintStack,
+                        preferredSlot,
+                        preferBag,
+                        out var liveStack,
+                        out var slotIndex,
+                        out var fromBag))
+                {
+                    DebugLog("TryAutoReadInventoryIngress: could not locate live stack");
+                    return false;
+                }
+
+                if (!ShouldAutoReadItem(liveStack))
+                {
+                    return false;
+                }
+
+                int stackCount = GameReflection.GetItemCount(liveStack);
+                int consumeCount = acceptedCount > 0 ? Math.Min(acceptedCount, stackCount) : stackCount;
+                if (consumeCount <= 0)
+                {
+                    return false;
+                }
+
+                var itemClass = GameReflection.GetItemClass(GameReflection.GetItemValue(liveStack));
+                var itemName = itemClass != null ? GameReflection.GetItemClassName(itemClass) : "?";
+                if (!InventoryAddPatchShared.TryMarkDebounced(itemName, slotIndex, fromBag, consumeCount))
+                {
+                    DebugLog($"TryAutoReadInventoryIngress: debounced {itemName} slot={slotIndex} bag={fromBag}");
+                    return false;
+                }
+
+                DebugLog($"TryAutoReadInventoryIngress: reading {consumeCount}x {itemName} slot={slotIndex} bag={fromBag}");
+
+                if (fromBag)
+                {
+                    var counts = new Dictionary<int, int> { { slotIndex, consumeCount } };
+                    ProcessBagSlots(player, bag, counts);
+                }
+                else
+                {
+                    var counts = new Dictionary<int, int> { { slotIndex, consumeCount } };
+                    ProcessInventorySlots(player, inventory, counts);
+                }
+
+                return true;
+            }
+            finally
+            {
+                InventoryAddPatchShared.ExitIngress();
+            }
+        }
+
+        private static bool TryLocateInventoryIngressStack(
+            EntityPlayer player,
+            Inventory inventory,
+            Bag bag,
+            ItemStack hintStack,
+            int preferredSlot,
+            bool preferBag,
+            out ItemStack liveStack,
+            out int slotIndex,
+            out bool fromBag)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            fromBag = false;
+
+            string hintName = null;
+            var hintClass = GameReflection.GetItemClass(GameReflection.GetItemValue(hintStack));
+            if (hintClass != null)
+            {
+                hintName = GameReflection.GetItemClassName(hintClass);
+            }
+
+            // Preferred slot first
+            if (preferredSlot >= 0)
+            {
+                if (preferBag && bag != null)
+                {
+                    var stack = GameReflection.GetBagItemStack(bag, preferredSlot);
+                    if (stack != null && !stack.IsEmpty() && MatchesIngressHint(stack, hintStack, hintName))
+                    {
+                        liveStack = stack;
+                        slotIndex = preferredSlot;
+                        fromBag = true;
+                        return true;
+                    }
+                }
+
+                if (inventory != null)
+                {
+                    var stack = inventory.GetItemStack(preferredSlot);
+                    if (stack != null && !stack.IsEmpty() && MatchesIngressHint(stack, hintStack, hintName))
+                    {
+                        liveStack = stack;
+                        slotIndex = preferredSlot;
+                        fromBag = false;
+                        return true;
+                    }
+                }
+
+                if (!preferBag && bag != null)
+                {
+                    var stack = GameReflection.GetBagItemStack(bag, preferredSlot);
+                    if (stack != null && !stack.IsEmpty() && MatchesIngressHint(stack, hintStack, hintName))
+                    {
+                        liveStack = stack;
+                        slotIndex = preferredSlot;
+                        fromBag = true;
+                        return true;
+                    }
+                }
+            }
+
+            // ReferenceEquals to hint (in-place placement)
+            if (TryFindStackByReference(inventory, bag, hintStack, preferBag, out liveStack, out slotIndex, out fromBag))
+            {
+                return true;
+            }
+
+            // Same item class name (cloned stack after add)
+            if (!string.IsNullOrEmpty(hintName)
+                && TryFindReadableStackByName(inventory, bag, hintName, preferBag, out liveStack, out slotIndex, out fromBag))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool MatchesIngressHint(ItemStack candidate, ItemStack hintStack, string hintName)
+        {
+            if (candidate == null || candidate.IsEmpty())
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(candidate, hintStack))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrEmpty(hintName))
+            {
+                return ShouldAutoReadItem(candidate);
+            }
+
+            var cClass = GameReflection.GetItemClass(GameReflection.GetItemValue(candidate));
+            var cName = cClass != null ? GameReflection.GetItemClassName(cClass) : null;
+            return string.Equals(cName, hintName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryFindStackByReference(
+            Inventory inventory,
+            Bag bag,
+            ItemStack hintStack,
+            bool preferBag,
+            out ItemStack liveStack,
+            out int slotIndex,
+            out bool fromBag)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            fromBag = false;
+            if (hintStack == null)
+            {
+                return false;
+            }
+
+            if (preferBag)
+            {
+                if (TryFindStackByReferenceInBag(bag, hintStack, out liveStack, out slotIndex))
+                {
+                    fromBag = true;
+                    return true;
+                }
+
+                if (TryFindStackByReferenceInInventory(inventory, hintStack, out liveStack, out slotIndex))
+                {
+                    fromBag = false;
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (TryFindStackByReferenceInInventory(inventory, hintStack, out liveStack, out slotIndex))
+            {
+                fromBag = false;
+                return true;
+            }
+
+            if (TryFindStackByReferenceInBag(bag, hintStack, out liveStack, out slotIndex))
+            {
+                fromBag = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryFindStackByReferenceInInventory(
+            Inventory inventory,
+            ItemStack hintStack,
+            out ItemStack liveStack,
+            out int slotIndex)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            if (inventory == null)
+            {
+                return false;
+            }
+
+            var slots = inventory.GetSlots();
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (ReferenceEquals(slots[i], hintStack))
+                {
+                    liveStack = slots[i];
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryFindStackByReferenceInBag(
+            Bag bag,
+            ItemStack hintStack,
+            out ItemStack liveStack,
+            out int slotIndex)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            var slots = GameReflection.GetBagSlots(bag);
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (ReferenceEquals(slots[i], hintStack))
+                {
+                    liveStack = slots[i];
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryFindReadableStackByName(
+            Inventory inventory,
+            Bag bag,
+            string itemName,
+            bool preferBag,
+            out ItemStack liveStack,
+            out int slotIndex,
+            out bool fromBag)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            fromBag = false;
+
+            if (preferBag)
+            {
+                if (TryFindReadableStackByNameInBag(bag, itemName, out liveStack, out slotIndex))
+                {
+                    fromBag = true;
+                    return true;
+                }
+
+                if (TryFindReadableStackByNameInInventory(inventory, itemName, out liveStack, out slotIndex))
+                {
+                    fromBag = false;
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (TryFindReadableStackByNameInInventory(inventory, itemName, out liveStack, out slotIndex))
+            {
+                fromBag = false;
+                return true;
+            }
+
+            if (TryFindReadableStackByNameInBag(bag, itemName, out liveStack, out slotIndex))
+            {
+                fromBag = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryFindReadableStackByNameInInventory(
+            Inventory inventory,
+            string itemName,
+            out ItemStack liveStack,
+            out int slotIndex)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            if (inventory == null)
+            {
+                return false;
+            }
+
+            var slots = inventory.GetSlots();
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var stack = slots[i];
+                if (stack == null || stack.IsEmpty() || !ShouldAutoReadItem(stack))
+                {
+                    continue;
+                }
+
+                var cClass = GameReflection.GetItemClass(GameReflection.GetItemValue(stack));
+                var cName = cClass != null ? GameReflection.GetItemClassName(cClass) : null;
+                if (string.Equals(cName, itemName, StringComparison.OrdinalIgnoreCase))
+                {
+                    liveStack = stack;
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryFindReadableStackByNameInBag(
+            Bag bag,
+            string itemName,
+            out ItemStack liveStack,
+            out int slotIndex)
+        {
+            liveStack = null;
+            slotIndex = -1;
+            var slots = GameReflection.GetBagSlots(bag);
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var stack = slots[i];
+                if (stack == null || stack.IsEmpty() || !ShouldAutoReadItem(stack))
+                {
+                    continue;
+                }
+
+                var cClass = GameReflection.GetItemClass(GameReflection.GetItemValue(stack));
+                var cName = cClass != null ? GameReflection.GetItemClassName(cClass) : null;
+                if (string.Equals(cName, itemName, StringComparison.OrdinalIgnoreCase))
+                {
+                    liveStack = stack;
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool ShouldAutoReadItem(ItemStack itemStack)
@@ -526,7 +968,8 @@ namespace AutoReadMod
                     lootSlotController,
                     lootWindowGroup,
                     lootReadDebugId,
-                    readingFromOpenContainer: openContainerRead);
+                    readingFromOpenContainer: openContainerRead,
+                    readingFromPlayerBag: bundleReadFromBag);
                 DebugLog($"Consumed {successfulConsumes}/{targetCount}x {itemName}, now updating slot");
                 if (lootReadDebugId != 0)
                 {
@@ -731,7 +1174,8 @@ namespace AutoReadMod
             XUiC_ItemStack lootSlotController = null,
             XUiC_LootWindowGroup lootWindowGroup = null,
             int lootReadDebugId = 0,
-            bool readingFromOpenContainer = false)
+            bool readingFromOpenContainer = false,
+            bool readingFromPlayerBag = false)
         {
             var itemValue = GameReflection.GetItemValue(itemStack);
             var itemClass = GameReflection.GetItemClass(itemValue);
@@ -835,6 +1279,9 @@ namespace AutoReadMod
             // Never pass loot XUiC_ItemStack into ItemActionEat.ExecuteInstantAction / eat paths: vanilla uses that controller to resolve
             // *player* inventory slots. Even when ItemStack args reference the tile entity, slot 0 controllers often map to the toolbelt and
             // consume hotbar slot 0 (e.g. axe). Only mutate the tile/bag backing ItemStack passed into this method.
+            //
+            // Player backpack (Bag) slot indices are also not Inventory/toolbelt indices. Passing a bag slot as slotIdx
+            // writes ItemActionEat action data into the wrong hotbar slot → InvalidCastException spam on toolbelt Update.
             var readingFromOpenLoot = readingFromOpenContainer || lootWindowGroup != null;
             if (readingFromOpenLoot)
             {
@@ -852,9 +1299,11 @@ namespace AutoReadMod
             }
 
             var vanillaInstantActionOwnsEvents = !readingFromOpenLoot && lootSlotController != null;
-            var slotForConsumeAndSkills = readingFromOpenLoot ? -1 : itemSlotIndex;
-            var slotForMinEvents = readingFromOpenLoot ? -1 : itemSlotIndex;
-            if (slotForConsumeAndSkills < 0 && !readingFromOpenLoot)
+            // Bag indices must never be used as Inventory.slotIdx; toolbelt indices are OK when the stack is in Inventory.
+            var useNonInventorySlotIdx = readingFromOpenLoot || readingFromPlayerBag;
+            var slotForConsumeAndSkills = useNonInventorySlotIdx ? -1 : itemSlotIndex;
+            var slotForMinEvents = useNonInventorySlotIdx ? -1 : itemSlotIndex;
+            if (slotForConsumeAndSkills < 0 && !useNonInventorySlotIdx)
             {
                 LogHypothesis(
                     "ApplyReadableEffects: WARNING slotIdx=-1 — many builds skip perk/recipe unlock logic when ItemInventoryData.slotIdx is not a real inventory/container slot.");
@@ -866,11 +1315,20 @@ namespace AutoReadMod
                     $"ApplyReadableEffects: loot container UI — tile backing stack only, slotIdx=-1, no XUiC_ItemStack on eat/instant paths; learnRecipeAfterEat={(learnRecipeAction != null)}");
                 LogLootSnapshot(lootReadDebugId, "ApplyReadableEffects.begin", player, itemStack, lootSlotController);
             }
+            else if (readingFromPlayerBag)
+            {
+                LogHypothesis(
+                    $"ApplyReadableEffects: player bag slot={itemSlotIndex} — ItemInventoryData.slotIdx=-1 (bag≠toolbelt); uiCtrl={(lootSlotController == null ? "null" : "yes")}");
+            }
 
             DebugLog(
                 $"ApplyReadableEffects: {effectiveCount}/{consumeCount} x {itemName} (slotIdx={itemSlotIndex}, consumeSlot={slotForConsumeAndSkills}), lootUiEatCtrl={(lootSlotController == null ? "no" : "yes")}, Eat/GainSkill/LearnRecipe/FireEvent paths");
 
             var xmlReadableEffects = ResolveSyntheticReadableEffects(itemClass);
+            // Controller-less inventory/bag reads (ground pickup, some transfers) consume via InstantAction
+            // but miss perk MaxProgression / magazine INT bonus / book-set Complete — mirror open-loot synthetics.
+            var needsSyntheticReadableGrants = readingFromOpenLoot ||
+                                               (!readingFromOpenLoot && lootSlotController == null);
             var xmlProgressionEffectsOwnLearning = readingFromOpenLoot &&
                                                    (xmlReadableEffects.AddProgressionNames.Length > 0 ||
                                                     xmlReadableEffects.MaxProgressionNames.Length > 0);
@@ -880,11 +1338,11 @@ namespace AutoReadMod
                                                  xmlReadableEffects.AddProgressionNames.Length > 0) ||
                                                 (itemKindForLootEvents == ReadableItemKind.Book &&
                                                  xmlReadableEffects.MaxProgressionNames.Length > 0));
-            var shouldApplyMagazineDoublePointBonus = readingFromOpenLoot &&
+            var shouldApplyMagazineDoublePointBonus = needsSyntheticReadableGrants &&
                                                       IsSkillMagazineItemClass(itemClass) &&
                                                       xmlReadableEffects.AddProgressionNames.Length > 0;
             var progressionNames = ResolveGainSkillProgressionNames(gainSkillAction, itemClass, xmlReadableEffects);
-            if (gainSkillAction != null || readingFromOpenLoot || ModConfig.Instance.SkipAlreadyRead)
+            if (gainSkillAction != null || needsSyntheticReadableGrants || ModConfig.Instance.SkipAlreadyRead)
             {
                 LogHypothesis(
                     $"ApplyReadableEffects: resolved gain-skill progressions for {itemName}: {(progressionNames.Length == 0 ? "(none)" : string.Join(",", progressionNames))}");
@@ -1225,8 +1683,12 @@ namespace AutoReadMod
                         LogLootSnapshot(lootReadDebugId, $"after OpenLootFireEnd unit={i + 1}", player, itemStack, lootSlotController);
                     }
 
-                    if (readingFromOpenLoot && consumedThisUnit > 0 && xmlReadableEffects.HasAny)
+                    if (needsSyntheticReadableGrants && consumedThisUnit > 0 && xmlReadableEffects.HasAny)
                     {
+                        // For inventory ingress, baseline is pre-unit capture so AddProgression won't double after GainSkillFallback.
+                        var syntheticBaseline = readingFromOpenLoot
+                            ? effectEntityOpenLootEventBaseline
+                            : effectSkillLevelsBefore;
                         ApplySyntheticXmlReadableEffects(
                             effectEntity,
                             xmlReadableEffects,
@@ -1234,7 +1696,7 @@ namespace AutoReadMod
                             itemName,
                             i + 1,
                             "effect entity",
-                            effectEntityOpenLootEventBaseline);
+                            syntheticBaseline);
                         if (shouldApplyMagazineDoublePointBonus)
                         {
                             ApplyMagazineDoublePointBonusFromGameCVar(
@@ -1244,7 +1706,7 @@ namespace AutoReadMod
                                 itemName,
                                 i + 1,
                                 "effect entity",
-                                effectEntityOpenLootEventBaseline);
+                                syntheticBaseline);
                         }
 
                         if (itemKindForSkip == ReadableItemKind.Book)
@@ -1260,7 +1722,8 @@ namespace AutoReadMod
                                 consumedThisUnit,
                                 itemName,
                                 i + 1,
-                                "context player");
+                                "context player",
+                                playerSkillLevelsBefore);
                             if (shouldApplyMagazineDoublePointBonus)
                             {
                                 ApplyMagazineDoublePointBonusFromGameCVar(
@@ -1270,7 +1733,7 @@ namespace AutoReadMod
                                     itemName,
                                     i + 1,
                                     "context player",
-                                    null);
+                                    playerSkillLevelsBefore);
                             }
 
                             if (itemKindForSkip == ReadableItemKind.Book)
@@ -1279,7 +1742,15 @@ namespace AutoReadMod
                             }
                         }
 
-                        LogLootSnapshot(lootReadDebugId, $"after XmlSyntheticEffects unit={i + 1}", player, itemStack, lootSlotController);
+                        if (readingFromOpenLoot)
+                        {
+                            LogLootSnapshot(lootReadDebugId, $"after XmlSyntheticEffects unit={i + 1}", player, itemStack, lootSlotController);
+                        }
+                        else
+                        {
+                            LogHypothesis(
+                                $"ApplyReadableEffects: item {i + 1}: inventory-ingress synthetic grants for {itemName} (uiCtrl=null)");
+                        }
                     }
 
                     if (consumedThisUnit > 0 && learnRecipeAction != null)
@@ -1319,11 +1790,16 @@ namespace AutoReadMod
                     // Run after counting success so reflection/search bugs cannot undo a valid consume/stack update.
                     // Always attempt CraftingManager unlock for loot reads: ItemActionLearnRecipe + MoldTarget/name heuristics
                     // populate candidates; harmless no-op when none match. Name-based ReadableItemKind alone can miss mods/vanilla ids.
-                    if (readingFromOpenLoot && consumedThisUnit > 0)
+                    // Same for controller-less inventory ingress (ground pickup / some transfers).
+                    if ((readingFromOpenLoot || needsSyntheticReadableGrants) && consumedThisUnit > 0)
                     {
                         try
                         {
-                            LogLootSnapshot(lootReadDebugId, $"before CraftingManagerFallback unit={i + 1}", player, itemStack, lootSlotController);
+                            if (readingFromOpenLoot)
+                            {
+                                LogLootSnapshot(lootReadDebugId, $"before CraftingManagerFallback unit={i + 1}", player, itemStack, lootSlotController);
+                            }
+
                             TryUnlockLootSchematicRecipesViaCraftingManager(
                                 player,
                                 gameManager,
@@ -1331,7 +1807,11 @@ namespace AutoReadMod
                                 itemActions,
                                 itemName,
                                 i + 1);
-                            LogLootSnapshot(lootReadDebugId, $"after CraftingManagerFallback unit={i + 1}", player, itemStack, lootSlotController);
+
+                            if (readingFromOpenLoot)
+                            {
+                                LogLootSnapshot(lootReadDebugId, $"after CraftingManagerFallback unit={i + 1}", player, itemStack, lootSlotController);
+                            }
                         }
                         catch (Exception unlockEx)
                         {

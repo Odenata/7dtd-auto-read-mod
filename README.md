@@ -1,6 +1,6 @@
 # AutoReadMod (7 Days to Die)
 
-AutoReadMod forces the player to automatically read books, magazines, schematics, and recipes when they open a loot container.
+AutoReadMod forces the player to automatically read books, magazines, schematics, and recipes when they open a loot container. Optionally, **Read When Taken** leaves loot visible until you take items into inventory (including ground pickups).
 
 Release zip names use the **mod version**. See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for tested 7 Days to Die versions and [`CHANGELOG.md`](CHANGELOG.md) for release history. Maintainers: [`docs/releases/README.md`](docs/releases/README.md).
 
@@ -36,7 +36,7 @@ If the `Mods` folder does not exist, create it next to `7DaysToDie.exe`.
 
 With Gears+Quartz installed, open the Mods settings UI (main menu or Esc):
 
-- **World / Behavior** (synced for the save when Gears is on the server): Enabled, Skip already read, Books, Magazines, Schematics. Host/admin changes apply for the world; clients should not expect to override these.
+- **World / Behavior** (synced for the save when Gears is on the server): Enabled, Skip already read, Read When Taken, Books, Magazines, Schematics. Host/admin changes apply for the world; clients should not expect to override these.
 - **Client** (your machine only): Debug mode and visualization (notifications, max visible, colors).
 
 Hot knobs apply without restarting when changed through Gears. World values also refresh the next time loot is processed.
@@ -47,6 +47,7 @@ Edit `Mods\AutoReadMod\Config.xml` after installing (or when not using Gears):
 
 - `Enabled`: turns the whole mod on or off without uninstalling.
 - `SkipAlreadyRead`: leave already-maxed / already-known readables in loot.
+- `ReadOnInventoryAdd`: when true, do not auto-read on open loot; auto-read when readables enter your inventory (take / pickup / quest / trader / bundle).
 - `DebugMode`: writes extra troubleshooting logs (client-only intent).
 - `ItemTypes`: choose whether books, magazines, and schematics/recipes are auto-read.
 - `Visualization`: controls the on-screen notification list and colors (client-only intent).

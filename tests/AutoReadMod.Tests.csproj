@@ -29,6 +29,7 @@
     <Compile Include="DeployToolTests.cs" />
     <Compile Include="DebugLoggingTests.cs" />
     <Compile Include="GameLaunchTests.cs" />
+    <Compile Include="InventoryAddModeTests.cs" />
     <Compile Include="ItemIdentificationTests.cs" />
     <Compile Include="MagazineBonusAndSkipAlreadyReadTests.cs" />
     <Compile Include="ModApiTests.cs" />

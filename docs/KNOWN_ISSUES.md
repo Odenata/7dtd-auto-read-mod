@@ -61,3 +61,10 @@ Opening a loot container with readables could flood the log with **`InvalidCastE
 **Cause:** loot slot indices (0…N) were passed as **`ItemInventoryData.slotIdx`** for eat / min-event paths. The game treated them as **player inventory** indices and left **`ItemActionEat`** action data inconsistent on those slots.
 
 **Fix:** use **`slotIdx = -1`** for eat/consume/skill **`ItemInventoryData`** whenever reading from open loot; keep the real index only for resolving the loot **`XUiC_ItemStack`** controller. **Recipe unlock:** invoke **`ItemActionLearnRecipe.ExecuteAction`** after consume, and if needed **`CraftingManager.UnlockRecipe`** using **`RecipesToLearn`**, **`MoldTarget`**, and name heuristics.
+
+## Inventory-add mode: bundles and non-loot grants
+
+When World **Read When Taken** (`ReadOnInventoryAdd`) is enabled, open chests/entity bags leave readables visible until you take them. That mode still auto-reads:
+
+- **Bundles** immediately (no bundle contents preview UI — expected, not a bug)
+- **Ground pickups**, **quest/trader rewards**, and other inventory grants (by design; there is no per-source toggle yet)

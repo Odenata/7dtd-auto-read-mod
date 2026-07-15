@@ -5,6 +5,7 @@
     <Category name="Behavior" displayKey="armWorldBehavior" tooltipKey="armWorldBehaviorTip">
       <Switch name="Enabled" displayKey="armEnabled" tooltipKey="armEnabledWorldTip" defaultValue="true" leftValue="false" rightValue="true" />
       <Switch name="SkipAlreadyRead" displayKey="armSkipAlreadyRead" tooltipKey="armSkipAlreadyReadTip" defaultValue="false" leftValue="false" rightValue="true" />
+      <Switch name="ReadOnInventoryAdd" displayKey="armReadOnInventoryAdd" tooltipKey="armReadOnInventoryAddTip" defaultValue="false" leftValue="false" rightValue="true" />
       <Switch name="Books" displayKey="armBooks" tooltipKey="armBooksTip" defaultValue="true" leftValue="false" rightValue="true" />
       <Switch name="Magazines" displayKey="armMagazines" tooltipKey="armMagazinesTip" defaultValue="true" leftValue="false" rightValue="true" />
       <Switch name="Schematics" displayKey="armSchematics" tooltipKey="armSchematicsTip" defaultValue="true" leftValue="false" rightValue="true" />

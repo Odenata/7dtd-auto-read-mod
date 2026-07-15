@@ -19,6 +19,10 @@ namespace AutoReadMod
             if (_bag == null)
                 return;
 
+            GearsModApi.SyncWorldSettingsIfLoaded();
+            if (!ModConfig.Instance.Enabled || ModConfig.Instance.ReadOnInventoryAdd)
+                return;
+
             var player = GameReflection.GetPlayerFromBagContainer(__instance);
             var slots = GameReflection.GetBagSlots(_bag);
             int nonEmptyCount = 0;
@@ -118,6 +122,12 @@ namespace AutoReadMod
         {
             if (player == null || bag == null)
                 return;
+
+            GearsModApi.SyncWorldSettingsIfLoaded();
+            if (ModConfig.Instance.ReadOnInventoryAdd)
+            {
+                return;
+            }
 
             AutoReader.ProcessEntityLootBag(player, bag, bagContainer);
             MarkBagUiRefreshNeeded(bagContainer, bag);

@@ -191,16 +191,25 @@ namespace AutoReadMod.Tests
                 skipAlreadyRead: true,
                 readBooks: false,
                 readMagazines: true,
-                readSchematics: false);
+                readSchematics: false,
+                readOnInventoryAdd: true);
 
             Assert.False(config.Enabled);
             Assert.True(config.SkipAlreadyRead);
             Assert.False(config.ReadBooks);
             Assert.True(config.ReadMagazines);
             Assert.False(config.ReadSchematics);
+            Assert.True(config.ReadOnInventoryAdd);
             // Global knobs untouched
             Assert.False(config.DebugMode);
             Assert.True(config.VisualizationEnabled);
+        }
+
+        [Fact]
+        public void DefaultConfig_ReadOnInventoryAddIsFalse()
+        {
+            var config = new ModConfig();
+            Assert.False(config.ReadOnInventoryAdd);
         }
 
         [Fact]

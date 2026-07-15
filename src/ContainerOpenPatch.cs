@@ -5,6 +5,38 @@ using HarmonyLib;
 namespace AutoReadMod
 {
     /// <summary>
+    /// Vanilla/Quartz can notify loot UI after <c>localTileEntity</c> is cleared (e.g. window close → SetModified).
+    /// Guard avoids NullReferenceException spam from <c>GetSlots</c>.
+    /// </summary>
+    [HarmonyPatch(typeof(XUiC_LootContainer), "OnTileEntityChanged")]
+    [HarmonyWrapSafe]
+    public class LootContainerOnTileEntityChangedGuardPatch
+    {
+        static bool Prefix(XUiC_LootContainer __instance)
+        {
+            if (__instance == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var te = GameReflection.GetMemberValue<object>(__instance, "localTileEntity");
+                if (te == null)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Runs <see cref="ContainerOpenPatchShared.ProcessDeferredContainer"/> at most once per Unity frame so multiple hooks
     /// (XUi Update + GameManager Update) do not double-tick pending loot.
     /// </summary>
@@ -60,6 +92,11 @@ namespace AutoReadMod
         static void Postfix(XUiC_LootWindow __instance, string _lootContainerName, ITileEntityLootable _te, bool _playOpenSound)
         {
             if (_te == null)
+                return;
+
+            GearsModApi.SyncWorldSettingsIfLoaded();
+            // Inventory-add mode leaves loot untouched — do not refresh/mutate loot UI (avoids close-time NRE storms).
+            if (!ModConfig.Instance.Enabled || ModConfig.Instance.ReadOnInventoryAdd)
                 return;
 
             var lootWindowGroup = GameReflection.TryResolveLootWindowGroupFromLootWindow(__instance);
@@ -174,6 +211,12 @@ namespace AutoReadMod
         {
             if (player == null || te == null)
                 return;
+
+            GearsModApi.SyncWorldSettingsIfLoaded();
+            if (ModConfig.Instance.ReadOnInventoryAdd)
+            {
+                return;
+            }
 
             AutoReader.ProcessContainer(player, te, lootWindowGroup, lootWindow);
             MarkLootUiRefreshNeeded(lootWindow, te);

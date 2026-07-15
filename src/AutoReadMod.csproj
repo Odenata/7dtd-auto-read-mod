@@ -57,6 +57,7 @@
     <Compile Include="ContainerOpenPatch.cs" />
     <Compile Include="BagOpenPatch.cs" />
     <Compile Include="BundleOpenPatch.cs" />
+    <Compile Include="InventoryAddPatch.cs" />
     <Compile Include="GameReflection.cs" />
     <Compile Include="AutoReader.cs" />
     <Compile Include="AutoReadVisualizationEvent.cs" />

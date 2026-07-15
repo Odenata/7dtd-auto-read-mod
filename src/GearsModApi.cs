@@ -97,7 +97,8 @@ namespace AutoReadMod
                 skipAlreadyRead: ReadWorldBool(category, "SkipAlreadyRead", config.SkipAlreadyRead),
                 readBooks: ReadWorldBool(category, "Books", config.ReadBooks),
                 readMagazines: ReadWorldBool(category, "Magazines", config.ReadMagazines),
-                readSchematics: ReadWorldBool(category, "Schematics", config.ReadSchematics));
+                readSchematics: ReadWorldBool(category, "Schematics", config.ReadSchematics),
+                readOnInventoryAdd: ReadWorldBool(category, "ReadOnInventoryAdd", config.ReadOnInventoryAdd));
         }
 
         private static void ApplyGlobalFromGears(IModGlobalSettings settings)

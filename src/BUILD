@@ -10,6 +10,7 @@ net_library(
         "ContainerOpenPatch.cs",
         "BagOpenPatch.cs",
         "BundleOpenPatch.cs",
+        "InventoryAddPatch.cs",
         "GameReflection.cs",
         "AutoReader.cs",
         "AutoReadVisualizationEvent.cs",

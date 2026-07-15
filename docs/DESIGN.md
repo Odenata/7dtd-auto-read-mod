@@ -4,15 +4,17 @@
 
 AutoReadMod uses Harmony patches to detect when readable items become available from supported sources:
 
-- opening a loot container
-- opening a bundle item from inventory
+- opening a loot container or entity bag (default World mode)
+- opening a bundle item from inventory (default World mode)
+- any readable entering the local player's toolbelt/backpack when World **Read When Taken** (`ReadOnInventoryAdd`) is enabled
 
 The mod identifies readable items (books, magazines, schematics, recipes), applies the item's read effects to the player, and removes only the successfully consumed count.
 
 ## Runtime Behavior
 
-- **Container open**: Harmony patch on `XUiC_LootWindowGroup` (or equivalent) runs when the loot UI is shown.
-- **Bundle open**: Harmony postfixes on `ItemActionOpenBundle.ExecuteInstantAction(...)` and `ItemActionOpenLootBundle.ExecuteInstantAction(...)` snapshot the player's inventory before the bundle opens, then inspect newly added items after the game populates the bundle results.
+- **Container open**: Harmony patch on `XUiC_LootWindow` / entity bag UI runs when loot is shown. Skipped when `ReadOnInventoryAdd` is true.
+- **Bundle open**: Harmony postfixes on `ItemActionOpenBundle.ExecuteInstantAction(...)` and `ItemActionOpenLootBundle.ExecuteInstantAction(...)` snapshot the player's inventory before the bundle opens, then inspect newly added items after the game populates the bundle results. Skipped when `ReadOnInventoryAdd` is true (inventory-add hooks own the read).
+- **Inventory add** (optional World mode): Harmony postfixes on `XUiM_PlayerInventory.AddItem*` plus local-player `Bag`/`Inventory.AddItem` call `TryAutoReadInventoryIngress` for loot takes, pickups, quest/trader grants, and bundles.
 - **Item scan**: Identify readable items by name patterns:
   - books: names starting with `book`
   - magazines: names containing `magazine`
@@ -34,11 +36,13 @@ See `src/Config.xml`, `src/ModSettings.xml`, and `ModConfig.cs`:
 
 - **Enabled** — Enable/disable overall behavior (**Gears World** when present)
 - **SkipAlreadyRead** — Leave no-benefit units in loot (**Gears World**)
+- **ReadOnInventoryAdd** — Leave open loot visible; auto-read on inventory ingress (**Gears World**, default false)
 - **ItemTypes/Books|Magazines|Schematics** — Include those kinds (**Gears World**)
 - **DebugMode** — Verbose logging (**Gears Global / client**)
 - **Visualization**: Enabled, max visible, per-kind colors (**Gears Global / client**)
+- **Audio**: Play read / book-set complete sounds (**Gears Global / client**)
 
-Soft-dep: ship `GearsAPI.dll`; `GearsModApi` (`IGearsModApi`) applies settings live. Without Gears, Config.xml alone is used. World CurrentValues are re-synced on loot processing because GearsAPI has no World `OnSettingChanged`.
+Soft-dep: ship `GearsAPI.dll`; `GearsModApi` (`IGearsModApi`) applies settings live. Without Gears, Config.xml alone is used. World CurrentValues are re-synced on loot/inventory processing because GearsAPI has no World `OnSettingChanged`.
 
 ## Testing Strategy
 

@@ -16,6 +16,12 @@ namespace AutoReadMod
         /// Default false preserves always-consume-from-loot behavior.
         /// </summary>
         public bool SkipAlreadyRead { get; set; } = false;
+        /// <summary>
+        /// When true, skip auto-read on open loot/entity bags; auto-read when a readable enters
+        /// the local player's toolbelt or backpack (loot take, pickup, quest/trader, bundles).
+        /// Default false preserves open-loot behavior.
+        /// </summary>
+        public bool ReadOnInventoryAdd { get; set; } = false;
         public bool ReadBooks { get; set; } = true;
         public bool ReadMagazines { get; set; } = true;
         public bool ReadSchematics { get; set; } = true;
@@ -56,13 +62,15 @@ namespace AutoReadMod
             bool skipAlreadyRead,
             bool readBooks,
             bool readMagazines,
-            bool readSchematics)
+            bool readSchematics,
+            bool readOnInventoryAdd = false)
         {
             Enabled = enabled;
             SkipAlreadyRead = skipAlreadyRead;
             ReadBooks = readBooks;
             ReadMagazines = readMagazines;
             ReadSchematics = readSchematics;
+            ReadOnInventoryAdd = readOnInventoryAdd;
         }
 
         /// <summary>
@@ -112,6 +120,8 @@ namespace AutoReadMod
                 sb.AppendLine($"  <Enabled>{BoolXml(Enabled)}</Enabled>");
                 sb.AppendLine("  <!-- When true, leave maxed magazines / already-read books / known schematics in loot (partial stacks OK). Values: true, false -->");
                 sb.AppendLine($"  <SkipAlreadyRead>{BoolXml(SkipAlreadyRead)}</SkipAlreadyRead>");
+                sb.AppendLine("  <!-- When true, do not auto-read on open loot; auto-read when readables enter player inventory. Values: true, false -->");
+                sb.AppendLine($"  <ReadOnInventoryAdd>{BoolXml(ReadOnInventoryAdd)}</ReadOnInventoryAdd>");
                 sb.AppendLine("  <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->");
                 sb.AppendLine($"  <DebugMode>{BoolXml(DebugMode)}</DebugMode>");
                 sb.AppendLine("  <!-- Client audio cues when auto-reading. Values: true, false -->");
@@ -261,6 +271,10 @@ namespace AutoReadMod
                 if (skipAlreadyReadNode != null)
                     config.SkipAlreadyRead = bool.Parse(skipAlreadyReadNode.InnerText);
 
+                var readOnInventoryAddNode = doc.SelectSingleNode("//ReadOnInventoryAdd");
+                if (readOnInventoryAddNode != null)
+                    config.ReadOnInventoryAdd = bool.Parse(readOnInventoryAddNode.InnerText);
+
                 var booksNode = doc.SelectSingleNode("//ItemTypes/Books");
                 if (booksNode != null)
                     config.ReadBooks = bool.Parse(booksNode.InnerText);
@@ -328,6 +342,8 @@ namespace AutoReadMod
   <Enabled>true</Enabled>
   <!-- When true, leave maxed magazines / already-read books / known schematics in loot (partial stacks OK). Values: true, false -->
   <SkipAlreadyRead>false</SkipAlreadyRead>
+  <!-- When true, do not auto-read on open loot; auto-read when readables enter player inventory. Values: true, false -->
+  <ReadOnInventoryAdd>false</ReadOnInventoryAdd>
   <!-- If true, writes extra info to the game log (for troubleshooting). Values: true, false -->
   <DebugMode>false</DebugMode>
   <!-- Client audio cues when auto-reading. Values: true, false -->

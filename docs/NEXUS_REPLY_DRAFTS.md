@@ -83,6 +83,17 @@ If you tried **1.2.1** and still saw +1 only, update to **1.2.2** — that build
 
 ---
 
+## Feature request: auto-read only when taken (not on open loot)
+
+Thanks for the suggestion. There is a World Behavior switch **Read When Taken** (`ReadOnInventoryAdd`, default off) for this:
+
+- **Off (default):** same as today — auto-read when you open a chest or entity bag.
+- **On:** leave books/magazines visible in open loot; auto-read when they enter your inventory (taking from loot, ground pickups, quest/trader rewards). Bundles still auto-read immediately because they have no contents preview.
+
+Enable it under Gears World → Behavior, or set `<ReadOnInventoryAdd>true</ReadOnInventoryAdd>` in `Config.xml` (restart if editing the file by hand).
+
+---
+
 ## Experimental vs stable
 
 | Mod | Game build | Notes |
@@ -92,5 +103,6 @@ If you tried **1.2.1** and still saw +1 only, update to **1.2.2** — that build
 | 1.0.2 | 3.0.0 **(b259) stable** | INT Mastery loot double-point fix; opt-in `SkipAlreadyRead` |
 | 1.1.0 | 3.0.0 **(b259) stable** | No bundled `0Harmony.dll`; requires official `Mods\0_TFP_Harmony` |
 | 1.2.1 | 3.0.0 **(b259) stable** | Book-set Complete on loot; sandbox Magazine Progress on loot magazines |
+| 1.3.0 | 3.0.0 **(b259) stable** | Optional World **Read When Taken** (`ReadOnInventoryAdd`) |
 
-Do not use **1.0.0** on stable **b259** if bags matter — upgrade to **1.2.1** (or at least **1.1.0**).
+Do not use **1.0.0** on stable **b259** if bags matter — upgrade to **1.3.0** (or at least **1.1.0**).
