@@ -52,6 +52,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="ModApi.cs" />
+    <Compile Include="ModContentRoot.cs" />
     <Compile Include="ModConfig.cs" />
     <Compile Include="GearsModApi.cs" />
     <Compile Include="ContainerOpenPatch.cs" />

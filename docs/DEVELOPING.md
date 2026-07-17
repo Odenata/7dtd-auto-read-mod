@@ -102,6 +102,16 @@ AutoReadMod loaded successfully
 
 This is local host-tool or live-game evidence, not hermetic CI proof.
 
+### Dedicated server smoke
+
+Same install as the client (`SEVENDTD_GAME_PATH`). Prefers `7DaysToDieServer.exe`; if absent, launches `7DaysToDie.exe` with `-dedicated` (TFP `startdedicated.bat` behavior). After deploy:
+
+```powershell
+.\tools\test-dedicated-server.ps1 -TimeoutSeconds 90
+```
+
+Asserts the same load marker in a dedicated `-logfile` capture, then stops `7DaysToDieServer`. Use this to catch dedicated-only InitMod failures (for example empty `Assembly.Location`).
+
 ## Manual playtesting logs
 
 When you start the game yourself (typical Steam launch), client logs are usually rotating files here:

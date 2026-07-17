@@ -4076,8 +4076,8 @@ namespace AutoReadMod
 
             try
             {
-                var asmDir = Path.GetDirectoryName(typeof(AutoReader).Assembly.Location);
-                var dir = asmDir;
+                var modDir = ModContentRoot.ResolveModDirectory();
+                var dir = modDir;
                 for (var i = 0; i < 8 && !string.IsNullOrEmpty(dir); i++)
                 {
                     AddItemsXmlCandidate(candidates, seenRoots, dir);

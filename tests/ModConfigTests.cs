@@ -254,5 +254,62 @@ namespace AutoReadMod.Tests
             Assert.Equal(8, ModConfig.ParseIntSetting("8", 1));
             Assert.Equal(3, ModConfig.ParseIntSetting("nope", 3));
         }
+
+        [Fact]
+        public void GetConfigPath_PrefersModApiPathDirectory()
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), "AutoReadModContentRootTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                ModContentRoot.ClearForTests();
+                ModContentRoot.SetFromModApiForTests(tempDir);
+
+                var path = ModConfig.GetConfigPath();
+                Assert.Equal(Path.Combine(Path.GetFullPath(tempDir), "Config.xml"), path);
+            }
+            finally
+            {
+                ModContentRoot.ClearForTests();
+                try { Directory.Delete(tempDir, recursive: true); } catch { }
+            }
+        }
+
+        [Fact]
+        public void ApplyFromModApi_CachesExistingDirectory()
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), "AutoReadModContentRootTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                ModContentRoot.ClearForTests();
+                ModContentRoot.ApplyFromModApi(new FakeModWithPath { Path = tempDir });
+
+                Assert.Equal(Path.GetFullPath(tempDir), ModContentRoot.ResolveModDirectory());
+                Assert.EndsWith("Config.xml", ModConfig.GetConfigPath());
+                Assert.StartsWith(Path.GetFullPath(tempDir), ModConfig.GetConfigPath());
+            }
+            finally
+            {
+                ModContentRoot.ClearForTests();
+                try { Directory.Delete(tempDir, recursive: true); } catch { }
+            }
+        }
+
+        [Fact]
+        public void GetConfigPath_DoesNotThrowWhenModPathUnset()
+        {
+            ModContentRoot.ClearForTests();
+            // Assembly.Location is usually set under Bazel/MSBuild; when empty in-game,
+            // ResolveModDirectory returns null and GetConfigPath uses LocalLow without throwing.
+            var path = ModConfig.GetConfigPath();
+            Assert.False(string.IsNullOrWhiteSpace(path));
+            Assert.EndsWith("Config.xml", path);
+        }
+
+        private sealed class FakeModWithPath
+        {
+            public string Path { get; set; }
+        }
     }
 }

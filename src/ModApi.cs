@@ -9,7 +9,10 @@ namespace AutoReadMod
         public void InitMod(Mod modInstance)
         {
             SafeLog("Loading AutoReadMod");
-            
+
+            // Dedicated servers often have empty Assembly.Location; Mod.Path is reliable.
+            ModContentRoot.ApplyFromModApi(modInstance);
+
             var config = ModConfig.Instance;
             SafeLog($"Config: Enabled={config.Enabled}, DebugMode={config.DebugMode}");
             AutoReader.EmitDebugFileLocation();

@@ -230,19 +230,19 @@ namespace AutoReadMod
 
         private static string BoolXml(bool value) => value ? "true" : "false";
 
-        private static string GetConfigPath()
+        /// <summary>
+        /// Prefer <see cref="ModContentRoot"/> (Mod.Path / guarded Assembly.Location), then LocalLow fallback.
+        /// Never call GetDirectoryName on an empty Location (throws on Mono dedicated servers).
+        /// </summary>
+        internal static string GetConfigPath()
         {
-            // Prefer mod folder next to DLL (game install Mods/AutoReadMod or 7DaysToDie/Mods/AutoReadMod)
-            var assemblyDir = Path.GetDirectoryName(typeof(ModConfig).Assembly.Location);
-            if (!string.IsNullOrEmpty(assemblyDir))
+            var modDir = ModContentRoot.ResolveModDirectory();
+            if (!string.IsNullOrEmpty(modDir))
             {
-                var modFolderConfig = Path.Combine(assemblyDir, "Config.xml");
-                if (File.Exists(modFolderConfig))
-                    return modFolderConfig;
-                // Prefer writing next to the DLL even if the file does not exist yet
-                return modFolderConfig;
+                return Path.Combine(modDir, "Config.xml");
             }
-            // Fallback: Unity LocalLow (older game versions)
+
+            // Fallback: Unity LocalLow (older / client-oriented layouts)
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "..", "LocalLow", "The Fun Pimps", "7 Days To Die", "Mods", "AutoReadMod", "Config.xml");
@@ -410,6 +410,13 @@ namespace AutoReadMod
         public static void Reload()
         {
             instance = Load();
+        }
+
+        /// <summary>Drop cached Instance so the next access reloads after Mod.Path is applied.</summary>
+        internal static void InvalidateReloadableInstance()
+        {
+            instance = null;
+            configPath = null;
         }
     }
 }

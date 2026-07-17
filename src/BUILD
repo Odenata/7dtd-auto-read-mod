@@ -6,6 +6,7 @@ net_library(
     srcs = [
         "AssemblyInfo.cs",
         "ModApi.cs",
+        "ModContentRoot.cs",
         "ModConfig.cs",
         "ContainerOpenPatch.cs",
         "BagOpenPatch.cs",
