@@ -30,6 +30,7 @@
     <Compile Include="DebugLoggingTests.cs" />
     <Compile Include="GameLaunchTests.cs" />
     <Compile Include="InventoryAddModeTests.cs" />
+    <Compile Include="ReadableEffectMessageBuilderTests.cs" />
     <Compile Include="ItemIdentificationTests.cs" />
     <Compile Include="MagazineBonusAndSkipAlreadyReadTests.cs" />
     <Compile Include="ModApiTests.cs" />

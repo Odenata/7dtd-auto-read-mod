@@ -33,6 +33,8 @@ namespace AutoReadMod
 
         // Visualization (splash when items are auto-read)
         public bool VisualizationEnabled { get; set; } = true;
+        /// <summary>Client: ShowTooltip effect text for newly unlocked books / schematics / recipes.</summary>
+        public bool ShowReadEffects { get; set; } = true;
         public int VisualizationMaxVisible { get; set; } = 8;
         public Color VisualizationColorBook { get; set; } = new Color(0.2f, 0.9f, 0.3f, 1f);
         public Color VisualizationColorMagazine { get; set; } = new Color(0f, 0.4f, 1f, 1f);
@@ -85,7 +87,8 @@ namespace AutoReadMod
             Color colorRecipe,
             Color colorSchematic,
             bool playReadSounds = true,
-            bool playBookSetCompleteSound = true)
+            bool playBookSetCompleteSound = true,
+            bool showReadEffects = true)
         {
             DebugMode = debugMode;
             VisualizationEnabled = visualizationEnabled;
@@ -97,6 +100,7 @@ namespace AutoReadMod
             VisualizationColorSchematic = colorSchematic;
             PlayReadSounds = playReadSounds;
             PlayBookSetCompleteSound = playBookSetCompleteSound;
+            ShowReadEffects = showReadEffects;
         }
 
         /// <summary>
@@ -139,6 +143,8 @@ namespace AutoReadMod
                 sb.AppendLine("  <Visualization>");
                 sb.AppendLine("    <!-- Show or hide the notifications. Values: true, false -->");
                 sb.AppendLine($"    <Enabled>{BoolXml(VisualizationEnabled)}</Enabled>");
+                sb.AppendLine("    <!-- ShowTooltip effect text for newly unlocked books / schematics / recipes. Values: true, false -->");
+                sb.AppendLine($"    <ShowReadEffects>{BoolXml(ShowReadEffects)}</ShowReadEffects>");
                 sb.AppendLine("    <!-- Maximum number of notifications shown at once (older ones drop off). Values: positive number, e.g. 8 -->");
                 sb.AppendLine($"    <MaxVisible>{VisualizationMaxVisible}</MaxVisible>");
                 sb.AppendLine("    <!-- Notification text color per item type. Six hex digits, no # (e.g. 00CC40 = green). -->");
@@ -303,6 +309,10 @@ namespace AutoReadMod
                 if (visEnabledNode != null)
                     config.VisualizationEnabled = bool.Parse(visEnabledNode.InnerText);
 
+                var showReadEffectsNode = doc.SelectSingleNode("//Visualization/ShowReadEffects");
+                if (showReadEffectsNode != null)
+                    config.ShowReadEffects = bool.Parse(showReadEffectsNode.InnerText);
+
                 var visMaxNode = doc.SelectSingleNode("//Visualization/MaxVisible");
                 if (visMaxNode != null && int.TryParse(visMaxNode.InnerText, out int maxVisible))
                     config.VisualizationMaxVisible = maxVisible;
@@ -361,6 +371,8 @@ namespace AutoReadMod
   <Visualization>
     <!-- Show or hide the notifications. Values: true, false -->
     <Enabled>true</Enabled>
+    <!-- ShowTooltip effect text for newly unlocked books / schematics / recipes. Values: true, false -->
+    <ShowReadEffects>true</ShowReadEffects>
     <!-- Maximum number of notifications shown at once (older ones drop off). Values: positive number, e.g. 8 -->
     <MaxVisible>8</MaxVisible>
     <!-- Notification text color per item type. Six hex digits, no # (e.g. 00CC40 = green). -->

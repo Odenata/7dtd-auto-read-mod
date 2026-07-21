@@ -105,5 +105,6 @@ Enable it under Gears World → Behavior, or set `<ReadOnInventoryAdd>true</Read
 | 1.2.1 | 3.0.0 **(b259) stable** | Book-set Complete on loot; sandbox Magazine Progress on loot magazines |
 | 1.3.0 | 3.0.0 **(b259) stable** | Optional World **Read When Taken** (`ReadOnInventoryAdd`) |
 | 1.3.1 | 3.0.0 **(b259) stable** | Dedicated-server InitMod path fix (`Mod.Path`) |
+| 1.4.0 | 3.0.0 **(b259) stable** | Client **Show Read Effects** tooltips for new book / craft unlocks |
 
-Do not use **1.0.0** on stable **b259** if bags matter — upgrade to **1.3.1** (or at least **1.1.0**).
+Do not use **1.0.0** on stable **b259** if bags matter — upgrade to **1.4.0** (or at least **1.1.0**).

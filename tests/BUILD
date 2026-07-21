@@ -47,6 +47,7 @@ net_xunit_test(
         "MagazineBonusAndSkipAlreadyReadTests.cs",
         "BookSetAndSandboxMagazineTests.cs",
         "InventoryAddModeTests.cs",
+        "ReadableEffectMessageBuilderTests.cs",
         "VisualizationTests.cs",
     ],
     deps = MOD_TEST_DEPS,

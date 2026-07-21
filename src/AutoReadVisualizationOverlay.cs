@@ -900,6 +900,7 @@ namespace AutoReadMod
             object xui = __instance is XUi xu ? xu : GameReflection.GetLocalPlayerXUi();
             DeferredContainerTick.TickIfNewUnityFrame();
             AutoReadVisualizationOverlay.OnUpdate(xui);
+            ReadableEffectPopupQueue.OnUpdate();
         }
     }
 }

@@ -4,6 +4,12 @@ All notable **AutoReadMod** releases. Draft notes live in [`docs/releases/unrele
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-07-21
+
+### Added
+
+- Client **Show Read Effects** tooltips (queued, ~10s each): newly unlocked book perk / book-set Complete effect text, and “You can now craft …” for schematics/recipes. Magazines keep vanilla skill popups; already-known items are skipped.
+
 ## [1.3.1] - 2026-07-16
 
 ### Fixed

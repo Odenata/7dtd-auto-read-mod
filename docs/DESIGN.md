@@ -29,6 +29,7 @@ The mod identifies readable items (books, magazines, schematics, recipes), appli
   - loot containers: clear slot or keep same stack reference after in-place count changes
   - bundle outputs in player inventory: update only the added quantity so existing stacked items remain intact
 - **Visualization**: Container reads enqueue full rows (`AddItemStack` + type color + strip trailing `(N)`). **Bundle reads**: vanilla already shows loot rows; mod only enqueues **decorate-only** events (match `CollectedItemList+Data` by `ItemStack` / icon, color + strip `(N)`). See [FUTURE_WORK.md](FUTURE_WORK.md) for deferred ideas.
+- **Read effect tooltips**: Queued `GameManager.ShowTooltip` messages (~10s) for newly unlocked books (perk `*Desc` / Complete) and schematics/recipes (`You can now craft …`). Magazines rely on vanilla. Client toggle `ShowReadEffects`.
 
 ## Configuration
 
@@ -39,7 +40,7 @@ See `src/Config.xml`, `src/ModSettings.xml`, and `ModConfig.cs`:
 - **ReadOnInventoryAdd** — Leave open loot visible; auto-read on inventory ingress (**Gears World**, default false)
 - **ItemTypes/Books|Magazines|Schematics** — Include those kinds (**Gears World**)
 - **DebugMode** — Verbose logging (**Gears Global / client**)
-- **Visualization**: Enabled, max visible, per-kind colors (**Gears Global / client**)
+- **Visualization**: Enabled, max visible, per-kind colors, **Show Read Effects** tooltips (**Gears Global / client**)
 - **Audio**: Play read / book-set complete sounds (**Gears Global / client**)
 
 Soft-dep: ship `GearsAPI.dll`; `GearsModApi` (`IGearsModApi`) applies settings live. Without Gears, Config.xml alone is used. World CurrentValues are re-synced on loot/inventory processing because GearsAPI has no World `OnSettingChanged`.

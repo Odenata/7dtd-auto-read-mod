@@ -960,6 +960,13 @@ namespace AutoReadMod
                         $"ReadStack: bundleSlotController={(lootSlotController == null ? "null" : lootSlotController.GetType().Name)} bag={bundleReadFromBag} slot={itemSlotIndex}");
                 }
 
+                var kind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
+                ReadableUnlockSnapshot unlockSnapshot = null;
+                if (ShouldEmitReadEffectPopups(kind))
+                {
+                    unlockSnapshot = CaptureUnlockSnapshot(player, itemClass, kind);
+                }
+
                 var successfulConsumes = ApplyReadableEffects(
                     player,
                     itemStack,
@@ -1026,8 +1033,8 @@ namespace AutoReadMod
                     LogLootSnapshot(lootReadDebugId, "ReadStack.afterUpdateSlot", player, itemStack);
                 }
 
-                var kind = ClassifyReadableItemName(GameReflection.GetItemClassName(itemClass));
                 EmitVisualizationEvent(itemClass, itemValue, successfulConsumes, source, kind);
+                EmitReadEffectPopupsIfNew(player, itemClass, kind, unlockSnapshot);
             }
             catch (Exception ex)
             {
@@ -4926,24 +4933,210 @@ namespace AutoReadMod
                 return;
             }
 
-            string itemClassName = GameReflection.GetItemClassName(itemClass);
-            string itemKey = $"{GameReflection.GetItemType(itemValue)}:{itemClassName}".ToLowerInvariant();
-            string localizedName = itemClass.GetLocalizedItemName();
-            string iconName = GameReflection.GetItemIconName(itemClass);
-
-            if (source == AutoReadVisualizationSource.Bundle)
+            try
             {
-                AutoReadVisualizationQueue.Enqueue(new AutoReadVisualizationEvent(
-                    itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue,
-                    decorateVanillaEntryOnly: true));
-                return;
+                if (!ModConfig.Instance.VisualizationEnabled)
+                    return;
+
+                string itemClassName = GameReflection.GetItemClassName(itemClass);
+                string itemKey = $"{GameReflection.GetItemType(itemValue)}:{itemClassName}".ToLowerInvariant();
+                string localizedName = itemClass.GetLocalizedItemName();
+                string iconName = GameReflection.GetItemIconName(itemClass);
+
+                if (source == AutoReadVisualizationSource.Bundle)
+                {
+                    AutoReadVisualizationQueue.Enqueue(new AutoReadVisualizationEvent(
+                        itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue,
+                        decorateVanillaEntryOnly: true));
+                    return;
+                }
+
+                var evt = new AutoReadVisualizationEvent(itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue);
+                AutoReadVisualizationQueue.Enqueue(evt);
+                if (ModConfig.Instance.DebugMode)
+                {
+                    try { UnityEngine.Debug.Log($"[AutoReadMod] Visualization: enqueued event {itemClassName}, Kind={kind}"); } catch { }
+                }
+            }
+            catch
+            {
+                // ignore visualization failures
+            }
+        }
+
+        private sealed class ReadableUnlockSnapshot
+        {
+            internal bool BookPerkAlreadyUnlocked;
+            internal bool CompleteAlreadyUnlocked;
+            internal bool SchematicAlreadyKnown;
+            internal string CompleteProgressionName;
+        }
+
+        private static bool ShouldEmitReadEffectPopups(ReadableItemKind kind)
+        {
+            if (ModConfig.Instance == null || !ModConfig.Instance.ShowReadEffects)
+                return false;
+
+            return kind == ReadableItemKind.Book
+                   || kind == ReadableItemKind.Schematic
+                   || kind == ReadableItemKind.Recipe;
+        }
+
+        private static ReadableUnlockSnapshot CaptureUnlockSnapshot(
+            EntityPlayer player,
+            ItemClass itemClass,
+            ReadableItemKind kind)
+        {
+            var snapshot = new ReadableUnlockSnapshot();
+            try
+            {
+                var entity = GameReflection.ResolveEntityForItemEffects(player) as EntityAlive ?? player;
+                var effects = ResolveSyntheticReadableEffects(itemClass) ?? SyntheticReadableEffects.Empty;
+                snapshot.CompleteProgressionName = effects.CompleteProgressionName;
+
+                if (kind == ReadableItemKind.Book)
+                {
+                    snapshot.BookPerkAlreadyUnlocked = AreBookPerksUnlocked(entity, itemClass, effects);
+                    snapshot.CompleteAlreadyUnlocked = !effects.HasBookSetCompletion
+                        || IsBookPerkUnlocked(entity, effects.CompleteProgressionName);
+                }
+                else if (kind == ReadableItemKind.Schematic || kind == ReadableItemKind.Recipe)
+                {
+                    var gameManager = (object)GameReflection.GetGameManagerInstance();
+                    var itemActions = GameReflection.GetItemActions(itemClass);
+                    object learnRecipeAction = null;
+                    if (itemActions != null)
+                    {
+                        for (var ai = 0; ai < itemActions.Length; ai++)
+                        {
+                            var action = itemActions.GetValue(ai);
+                            if (action != null && action.GetType().Name == "ItemActionLearnRecipe")
+                            {
+                                learnRecipeAction = action;
+                                break;
+                            }
+                        }
+                    }
+
+                    snapshot.SchematicAlreadyKnown = IsSchematicAlreadyKnown(
+                        player,
+                        gameManager,
+                        itemClass,
+                        itemActions,
+                        learnRecipeAction,
+                        effects);
+                }
+            }
+            catch
+            {
+                // treat as unknown → may still enqueue after (prefer false negatives over spam)
             }
 
-            var evt = new AutoReadVisualizationEvent(itemKey, itemClassName, localizedName, iconName, count, source, kind, itemValue);
-            AutoReadVisualizationQueue.Enqueue(evt);
-            if (ModConfig.Instance.DebugMode)
+            return snapshot;
+        }
+
+        private static bool AreBookPerksUnlocked(EntityAlive entity, ItemClass itemClass, SyntheticReadableEffects effects)
+        {
+            if (entity == null)
+                return false;
+
+            if (effects != null && effects.MaxProgressionNames != null && effects.MaxProgressionNames.Length > 0)
             {
-                try { UnityEngine.Debug.Log($"[AutoReadMod] Visualization: enqueued event {itemClassName}, Kind={kind}"); } catch { }
+                var sawAny = false;
+                for (var i = 0; i < effects.MaxProgressionNames.Length; i++)
+                {
+                    var skill = effects.MaxProgressionNames[i];
+                    if (string.IsNullOrWhiteSpace(skill))
+                        continue;
+                    sawAny = true;
+                    if (!IsBookProgressionAlreadyUnlocked(entity, skill))
+                        return false;
+                }
+
+                if (sawAny)
+                    return true;
+            }
+
+            var unlocks = ReadableEffectMessageBuilder.TryGetItemUnlocks(itemClass);
+            if (!string.IsNullOrWhiteSpace(unlocks))
+                return IsBookProgressionAlreadyUnlocked(entity, unlocks);
+
+            return false;
+        }
+
+        private static void EmitReadEffectPopupsIfNew(
+            EntityPlayer player,
+            ItemClass itemClass,
+            ReadableItemKind kind,
+            ReadableUnlockSnapshot before)
+        {
+            if (before == null || !ShouldEmitReadEffectPopups(kind) || itemClass == null)
+                return;
+
+            try
+            {
+                var entity = GameReflection.ResolveEntityForItemEffects(player) as EntityAlive ?? player;
+                var effects = ResolveSyntheticReadableEffects(itemClass) ?? SyntheticReadableEffects.Empty;
+
+                if (kind == ReadableItemKind.Book)
+                {
+                    if (!before.BookPerkAlreadyUnlocked && AreBookPerksUnlocked(entity, itemClass, effects))
+                    {
+                        var text = ReadableEffectMessageBuilder.BuildBookEffectText(itemClass);
+                        if (!string.IsNullOrWhiteSpace(text))
+                            ReadableEffectPopupQueue.Enqueue(text);
+                    }
+
+                    var completeName = before.CompleteProgressionName ?? effects.CompleteProgressionName;
+                    if (!before.CompleteAlreadyUnlocked
+                        && !string.IsNullOrWhiteSpace(completeName)
+                        && IsBookPerkUnlocked(entity, completeName))
+                    {
+                        var completeText = ReadableEffectMessageBuilder.BuildCompleteEffectText(completeName);
+                        if (!string.IsNullOrWhiteSpace(completeText))
+                            ReadableEffectPopupQueue.Enqueue(completeText);
+                    }
+                }
+                else if (kind == ReadableItemKind.Schematic || kind == ReadableItemKind.Recipe)
+                {
+                    if (before.SchematicAlreadyKnown)
+                        return;
+
+                    var gameManager = (object)GameReflection.GetGameManagerInstance();
+                    var itemActions = GameReflection.GetItemActions(itemClass);
+                    object learnRecipeAction = null;
+                    if (itemActions != null)
+                    {
+                        for (var ai = 0; ai < itemActions.Length; ai++)
+                        {
+                            var action = itemActions.GetValue(ai);
+                            if (action != null && action.GetType().Name == "ItemActionLearnRecipe")
+                            {
+                                learnRecipeAction = action;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!IsSchematicAlreadyKnown(player, gameManager, itemClass, itemActions, learnRecipeAction, effects))
+                        return;
+
+                    var craftText = ReadableEffectMessageBuilder.BuildCraftUnlockText(itemClass);
+                    if (!string.IsNullOrWhiteSpace(craftText))
+                        ReadableEffectPopupQueue.Enqueue(craftText);
+                }
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    if (ModConfig.Instance.DebugMode)
+                        UnityEngine.Debug.LogWarning("[AutoReadMod] Effect popup emit failed: " + ex.Message);
+                }
+                catch
+                {
+                    // ignore
+                }
             }
         }
 

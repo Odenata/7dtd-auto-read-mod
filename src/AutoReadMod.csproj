@@ -64,6 +64,9 @@
     <Compile Include="AutoReadVisualizationEvent.cs" />
     <Compile Include="AutoReadVisualizationQueue.cs" />
     <Compile Include="AutoReadVisualizationOverlay.cs" />
+    <Compile Include="ReadableEffectMessageBuilder.cs" />
+    <Compile Include="ReadableEffectPopup.cs" />
+    <Compile Include="ReadableEffectPopupQueue.cs" />
     <None Include="ModInfo.xml" />
     <None Include="Config.xml" />
     <None Include="ModSettings.xml" />

@@ -24,6 +24,7 @@
       </Category>
       <Category name="Visualization" displayKey="armCategoryVisualization" tooltipKey="armCategoryVisualizationTip">
         <Switch name="Enabled" displayKey="armVizEnabled" tooltipKey="armVizEnabledTip" defaultValue="true" leftValue="false" rightValue="true" />
+        <Switch name="ShowReadEffects" displayKey="armShowReadEffects" tooltipKey="armShowReadEffectsTip" defaultValue="true" leftValue="false" rightValue="true" />
         <Slider name="MaxVisible" displayKey="armVizMaxVisible" tooltipKey="armVizMaxVisibleTip" defaultValue="8">
           <Property type="incrementalValuesInt" increment="1" minValue="1" maxValue="32" />
         </Slider>

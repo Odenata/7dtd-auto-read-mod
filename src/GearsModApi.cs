@@ -116,6 +116,7 @@ namespace AutoReadMod
             bool playReadSounds = config.PlayReadSounds;
             bool playBookSetCompleteSound = config.PlayBookSetCompleteSound;
             bool vizEnabled = config.VisualizationEnabled;
+            bool showReadEffects = config.ShowReadEffects;
             int maxVisible = config.VisualizationMaxVisible;
             Color book = config.VisualizationColorBook;
             Color magazine = config.VisualizationColorMagazine;
@@ -134,6 +135,7 @@ namespace AutoReadMod
             if (vizCat != null)
             {
                 vizEnabled = ReadGlobalBool(vizCat, "Enabled", vizEnabled);
+                showReadEffects = ReadGlobalBool(vizCat, "ShowReadEffects", showReadEffects);
                 maxVisible = ReadGlobalInt(vizCat, "MaxVisible", maxVisible);
                 book = ReadGlobalColor(vizCat, "ColorBook", book);
                 magazine = ReadGlobalColor(vizCat, "ColorMagazine", magazine);
@@ -150,7 +152,8 @@ namespace AutoReadMod
                 recipe,
                 schematic,
                 playReadSounds,
-                playBookSetCompleteSound);
+                playBookSetCompleteSound,
+                showReadEffects);
         }
 
         private static void AttachGlobalListeners(IModGlobalSettings settings)
@@ -194,6 +197,9 @@ namespace AutoReadMod
                     {
                         case "Enabled":
                             config.VisualizationEnabled = ModConfig.ParseBoolSetting(newValue, config.VisualizationEnabled);
+                            break;
+                        case "ShowReadEffects":
+                            config.ShowReadEffects = ModConfig.ParseBoolSetting(newValue, config.ShowReadEffects);
                             break;
                         case "MaxVisible":
                             config.VisualizationMaxVisible = ModConfig.ParseIntSetting(newValue, config.VisualizationMaxVisible);
