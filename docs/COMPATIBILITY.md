@@ -22,6 +22,7 @@ Use this table to see which **7 Days to Die** builds work with which **mod** ver
 | 1.3.0       | 3.0.0 (b259) stable               | Optional World **Read When Taken** (`ReadOnInventoryAdd`): auto-read on inventory ingress instead of open loot. |
 | 1.3.1       | 3.0.0 (b259) stable               | Dedicated server InitMod no longer crashes when `Assembly.Location` is empty (`Mod.Path`). |
 | 1.4.0       | 3.0.0 (b259) stable               | Client **Show Read Effects** tooltips for newly unlocked books / Complete / schematics / recipes. |
+| 1.4.1       | 3.4.0 stable (build 26310339)     | GearsAPI 3.0 / ModSettings schema v2 (Gears v8). Quartz v10 on the client for the Mods menu. |
 
 
 

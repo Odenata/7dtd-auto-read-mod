@@ -1,37 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ModSettings>
-  <!-- World: synced server ↔ clients when Gears is installed. Enforcement knobs. -->
+<ModSettings version="2">
+  <!-- World: synced server to clients when Gears is installed. Enforcement knobs. -->
   <World>
-    <Category name="Behavior" displayKey="armWorldBehavior" tooltipKey="armWorldBehaviorTip">
-      <Switch name="Enabled" displayKey="armEnabled" tooltipKey="armEnabledWorldTip" defaultValue="true" leftValue="false" rightValue="true" />
-      <Switch name="SkipAlreadyRead" displayKey="armSkipAlreadyRead" tooltipKey="armSkipAlreadyReadTip" defaultValue="false" leftValue="false" rightValue="true" />
-      <Switch name="ReadOnInventoryAdd" displayKey="armReadOnInventoryAdd" tooltipKey="armReadOnInventoryAddTip" defaultValue="false" leftValue="false" rightValue="true" />
-      <Switch name="Books" displayKey="armBooks" tooltipKey="armBooksTip" defaultValue="true" leftValue="false" rightValue="true" />
-      <Switch name="Magazines" displayKey="armMagazines" tooltipKey="armMagazinesTip" defaultValue="true" leftValue="false" rightValue="true" />
-      <Switch name="Schematics" displayKey="armSchematics" tooltipKey="armSchematicsTip" defaultValue="true" leftValue="false" rightValue="true" />
+    <Category name="Behavior" displayKey="armWorldBehavior">
+      <Description key="armWorldBehaviorTip" />
+      <Switch name="Enabled" displayKey="armEnabled" type="bool" defaultValue="true">
+        <Description key="armEnabledWorldTip" />
+      </Switch>
+      <Switch name="SkipAlreadyRead" displayKey="armSkipAlreadyRead" type="bool" defaultValue="false">
+        <Description key="armSkipAlreadyReadTip" />
+      </Switch>
+      <Switch name="ReadOnInventoryAdd" displayKey="armReadOnInventoryAdd" type="bool" defaultValue="false">
+        <Description key="armReadOnInventoryAddTip" />
+      </Switch>
+      <Switch name="Books" displayKey="armBooks" type="bool" defaultValue="true">
+        <Description key="armBooksTip" />
+      </Switch>
+      <Switch name="Magazines" displayKey="armMagazines" type="bool" defaultValue="true">
+        <Description key="armMagazinesTip" />
+      </Switch>
+      <Switch name="Schematics" displayKey="armSchematics" type="bool" defaultValue="true">
+        <Description key="armSchematicsTip" />
+      </Switch>
     </Category>
   </World>
 
   <!-- Global: this client only (Esc / main menu Mods settings). -->
   <Global>
     <Tab name="Client" displayKey="armTabClient" tooltipKey="armTabClientTip">
-      <Category name="Debug" displayKey="armCategoryDebug" tooltipKey="armCategoryDebugTip">
-        <Switch name="DebugMode" displayKey="armDebugMode" tooltipKey="armDebugModeTip" defaultValue="false" leftValue="false" rightValue="true" />
+      <Category name="Debug" displayKey="armCategoryDebug">
+        <Description key="armCategoryDebugTip" />
+        <Switch name="DebugMode" displayKey="armDebugMode" type="bool" defaultValue="false">
+          <Description key="armDebugModeTip" />
+        </Switch>
       </Category>
-      <Category name="Audio" displayKey="armCategoryAudio" tooltipKey="armCategoryAudioTip">
-        <Switch name="PlayReadSounds" displayKey="armPlayReadSounds" tooltipKey="armPlayReadSoundsTip" defaultValue="true" leftValue="false" rightValue="true" />
-        <Switch name="PlayBookSetCompleteSound" displayKey="armPlayBookSetCompleteSound" tooltipKey="armPlayBookSetCompleteSoundTip" defaultValue="true" leftValue="false" rightValue="true" />
+      <Category name="Audio" displayKey="armCategoryAudio">
+        <Description key="armCategoryAudioTip" />
+        <Switch name="PlayReadSounds" displayKey="armPlayReadSounds" type="bool" defaultValue="true">
+          <Description key="armPlayReadSoundsTip" />
+        </Switch>
+        <Switch name="PlayBookSetCompleteSound" displayKey="armPlayBookSetCompleteSound" type="bool" defaultValue="true">
+          <Description key="armPlayBookSetCompleteSoundTip" />
+        </Switch>
       </Category>
-      <Category name="Visualization" displayKey="armCategoryVisualization" tooltipKey="armCategoryVisualizationTip">
-        <Switch name="Enabled" displayKey="armVizEnabled" tooltipKey="armVizEnabledTip" defaultValue="true" leftValue="false" rightValue="true" />
-        <Switch name="ShowReadEffects" displayKey="armShowReadEffects" tooltipKey="armShowReadEffectsTip" defaultValue="true" leftValue="false" rightValue="true" />
-        <Slider name="MaxVisible" displayKey="armVizMaxVisible" tooltipKey="armVizMaxVisibleTip" defaultValue="8">
-          <Property type="incrementalValuesInt" increment="1" minValue="1" maxValue="32" />
+      <Category name="Visualization" displayKey="armCategoryVisualization">
+        <Description key="armCategoryVisualizationTip" />
+        <Switch name="Enabled" displayKey="armVizEnabled" type="bool" defaultValue="true">
+          <Description key="armVizEnabledTip" />
+        </Switch>
+        <Switch name="ShowReadEffects" displayKey="armShowReadEffects" type="bool" defaultValue="true">
+          <Description key="armShowReadEffectsTip" />
+        </Switch>
+        <Slider name="MaxVisible" displayKey="armVizMaxVisible" type="int" defaultValue="8">
+          <Description key="armVizMaxVisibleTip" />
+          <Range increment="1" minValue="1" maxValue="32" />
         </Slider>
-        <Color name="ColorBook" displayKey="armColorBook" tooltipKey="armColorBookTip" color="0,204,64" defaultColor="0,204,64" />
-        <Color name="ColorMagazine" displayKey="armColorMagazine" tooltipKey="armColorMagazineTip" color="0,102,255" defaultColor="0,102,255" />
-        <Color name="ColorRecipe" displayKey="armColorRecipe" tooltipKey="armColorRecipeTip" color="230,204,0" defaultColor="230,204,0" />
-        <Color name="ColorSchematic" displayKey="armColorSchematic" tooltipKey="armColorSchematicTip" color="255,0,255" defaultColor="255,0,255" />
+        <Color name="ColorBook" displayKey="armColorBook" defaultValue="0,204,64">
+          <Description key="armColorBookTip" />
+        </Color>
+        <Color name="ColorMagazine" displayKey="armColorMagazine" defaultValue="0,102,255">
+          <Description key="armColorMagazineTip" />
+        </Color>
+        <Color name="ColorRecipe" displayKey="armColorRecipe" defaultValue="230,204,0">
+          <Description key="armColorRecipeTip" />
+        </Color>
+        <Color name="ColorSchematic" displayKey="armColorSchematic" defaultValue="255,0,255">
+          <Description key="armColorSchematicTip" />
+        </Color>
       </Category>
     </Tab>
   </Global>

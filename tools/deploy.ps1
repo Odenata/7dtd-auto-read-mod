@@ -25,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace($DllPath)) {
   if (Test-Path $bazelDll) {
     $DllPath = $bazelDll
   } else {
-    $DllPath = Join-Path $repoRoot "src\bin\$Configuration\net472\AutoReadMod.dll"
+    $DllPath = Join-Path $repoRoot "src\bin\$Configuration\net48\AutoReadMod.dll"
   }
 }
 

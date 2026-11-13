@@ -4,6 +4,14 @@ All notable **AutoReadMod** releases. Draft notes live in [`docs/releases/unrele
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.1] - 2026-11-13
+
+### Changed
+
+- Settings file is Gears 8 schema v2, and the mod is built against GearsAPI 3.0.0. Config.xml still works when Gears is not installed.
+- V3.4 loot storage is `TEFeatureStorage` (`ItemGrid`), and toolbelt/bag slots are read from `ItemGrid` instead of `GetSlots` / `ITileEntityLootable`.
+- Expected game line is 7 Days to Die V3.4.0 stable. Install Quartz v10 and Gears v8, with EAC off, for the in-game Mods menu.
+
 ## [1.4.0] - 2026-07-21
 
 ### Added

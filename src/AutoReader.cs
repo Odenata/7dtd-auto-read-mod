@@ -88,7 +88,7 @@ namespace AutoReadMod
             Recipe,
         }
 
-        public static void ProcessContainer(EntityPlayer player, ITileEntityLootable container, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
+        public static void ProcessContainer(EntityPlayer player, TEFeatureStorage container, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
         {
             GearsModApi.SyncWorldSettingsIfLoaded();
             DebugLog($"ProcessContainer called, Enabled={ModConfig.Instance.Enabled}");
@@ -203,7 +203,7 @@ namespace AutoReadMod
                     updatedStack =>
                 {
                     inventory.SetItem(slotIndex, updatedStack);
-                    inventory.Changed();
+                    inventory.CallOnToolbeltChangedInternal();
                 },
                     itemSlotIndex: slotIndex);
             }
@@ -256,7 +256,7 @@ namespace AutoReadMod
 
         /// <summary>
         /// v3 entity loot (death bags, zombie bags, <c>EntityLootContainer</c>) uses <see cref="Bag"/> +
-        /// <c>XUiC_BagContainer</c>, not <see cref="ITileEntityLootable"/>. Same synthetic open-loot consume path
+        /// <c>XUiC_BagContainer</c>, not <see cref="TEFeatureStorage"/>. Same synthetic open-loot consume path
         /// as tile chests so player inventory/toolbelt is never treated as the read target.
         /// </summary>
         public static void ProcessEntityLootBag(EntityPlayer player, Bag bag, XUiC_BagContainer bagContainer = null)
@@ -570,7 +570,7 @@ namespace AutoReadMod
                 return false;
             }
 
-            var slots = inventory.GetSlots();
+            var slots = GameReflection.GetInventorySlots(inventory);
             if (slots == null)
             {
                 return false;
@@ -674,7 +674,7 @@ namespace AutoReadMod
                 return false;
             }
 
-            var slots = inventory.GetSlots();
+            var slots = GameReflection.GetInventorySlots(inventory);
             if (slots == null)
             {
                 return false;

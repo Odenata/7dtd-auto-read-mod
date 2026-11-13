@@ -1,9 +1,9 @@
 # Vendored GearsAPI (soft-dep for in-game mod settings)
 
 **GearsAPI.dll**
-- Version: 2.0.1.0 (from Gears v7.0.0-DP4 / 7DTD 3.0 line)
-- Source release: https://github.com/s7092910/Gears/releases/tag/v7.0.0-DP4
-- SHA256: `07a12c4ed96d19162100d025a18cfeaffd8568c88619078ec1f54b41342485f7`
+- Version: 3.0.0 (from Gears v8.0.0)
+- Source release: https://github.com/s7092910/Gears/releases/tag/v8.0.0
+- SHA256: `6e3b9e08d0005e1f1b63f2384a2442a057fdbf1d56baaf6eac5c20a30251edaa`
 - Author: Laydor (s7092910)
 - Purpose: compile + **runtime soft dependency**. Ship `GearsAPI.dll` next to `AutoReadMod.dll` so the mod loads without Gears installed. Players need [Gears](https://www.nexusmods.com/7daystodie/mods/4017) + [Quartz](https://www.nexusmods.com/7daystodie/mods/2409) for the in-game settings UI.
 

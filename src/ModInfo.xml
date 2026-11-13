@@ -4,7 +4,7 @@
   <DisplayName value="Auto Read Mod" />
   <Description value="Auto-reads books, magazines, and schematics when opening loot containers." />
   <Author value="Odenata" />
-  <Version value="1.4.0" />
+  <Version value="1.4.1" />
   <Website value="" />
   <Icon value="icon.png" />
 </ModInfo>

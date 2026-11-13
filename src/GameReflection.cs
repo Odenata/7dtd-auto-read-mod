@@ -136,7 +136,7 @@ namespace AutoReadMod
         /// Rebind loot slot controllers from the tile entity after auto-read mutates backing stacks.
         /// Uses vanilla <c>SetSlots</c> (same as <see cref="XUiC_LootWindow.SetTileEntityChest"/>).
         /// </summary>
-        internal static void RefreshLootContainerUiFromTileEntity(XUiC_LootWindow lootWindow, ITileEntityLootable te)
+        internal static void RefreshLootContainerUiFromTileEntity(XUiC_LootWindow lootWindow, TEFeatureStorage te)
         {
             if (lootWindow == null || te == null)
             {
@@ -151,26 +151,17 @@ namespace AutoReadMod
                     return;
                 }
 
-                var items = GetMemberValue<ItemStack[]>(te, "items");
+                var grid = te.ItemGrid;
+                var items = grid == null ? null : GetMemberValue<ItemStack[]>(grid, "items");
                 var setSlots = lootContainer.GetType().GetMethod(
                     "SetSlots",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                     null,
-                    new[] { typeof(ITileEntityLootable), typeof(ItemStack[]) },
+                    new[] { typeof(TEFeatureStorage) },
                     null);
                 if (setSlots != null)
                 {
-                    setSlots.Invoke(lootContainer, new object[] { te, items });
-                }
-                else
-                {
-                    var onChanged = lootContainer.GetType().GetMethod(
-                        "OnTileEntityChanged",
-                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-                        null,
-                        new[] { typeof(ITileEntity) },
-                        null);
-                    onChanged?.Invoke(lootContainer, new object[] { te });
+                    setSlots.Invoke(lootContainer, new object[] { te });
                 }
 
                 SyncLootGridItemControllers(lootContainer, items);
@@ -257,7 +248,7 @@ namespace AutoReadMod
             return new ItemStack(stack.itemValue, stack.count);
         }
 
-        internal static void TryUpdateLootContainerSlot(ITileEntityLootable container, int slotIndex, ItemStack updatedStack)
+        internal static void TryUpdateLootContainerSlot(TEFeatureStorage container, int slotIndex, ItemStack updatedStack)
         {
             if (container == null || slotIndex < 0)
             {
@@ -951,7 +942,7 @@ namespace AutoReadMod
                 var inv = GetInventory(player);
                 if (inv != null)
                 {
-                    var slots = InvokeMethod(inv, "GetSlots") as ItemStack[];
+                    var slots = GetInventorySlots(inv);
                     if (slots != null)
                     {
                         for (var i = 0; i < slots.Length; i++)
@@ -1088,6 +1079,17 @@ namespace AutoReadMod
                 return null;
             }
 
+            var grid = GetMemberValue<object>(inventory, "ItemGrid")
+                       ?? GetMemberValue<object>(inventory, "itemGrid");
+            if (grid != null)
+            {
+                var items = GetMemberValue<ItemStack[]>(grid, "items");
+                if (items != null)
+                {
+                    return items;
+                }
+            }
+
             var slots = InvokeMethod(inventory, "GetSlots") as System.Array;
             if (slots != null)
             {
@@ -1148,11 +1150,18 @@ namespace AutoReadMod
             return GetMemberValue<Bag>(entity, "bag");
         }
 
+        internal static ItemStack[] GetInventorySlots(Inventory inventory)
+        {
+            return inventory?.ItemGrid == null
+                ? null
+                : GetMemberValue<ItemStack[]>(inventory.ItemGrid, "items");
+        }
+
         internal static ItemStack[] GetBagSlots(Bag bag)
         {
-            return bag == null
+            return bag?.ItemGrid == null
                 ? null
-                : InvokeMethod(bag, "GetSlots") as ItemStack[];
+                : GetMemberValue<ItemStack[]>(bag.ItemGrid, "items");
         }
 
         internal static ItemStack GetBagItemStack(Bag bag, int slotIndex)
@@ -1173,7 +1182,7 @@ namespace AutoReadMod
                 return;
             }
 
-            InvokeMethod(bag, "SetSlot", slotIndex, itemStack, true);
+            bag.SetSlot(slotIndex, itemStack ?? GetEmptyItemStack());
         }
 
         internal static int GetItemCount(ItemStack itemStack)

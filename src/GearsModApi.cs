@@ -9,6 +9,8 @@ namespace AutoReadMod
     /// <summary>
     /// Soft-dep Gears bridge. Discovered by Gears when present; ignored when Gears is not installed.
     /// World settings = enforcement (synced). Global = debug + visualization (per client).
+    /// GearsAPI 3: values are typed. World settings have no OnValueChanged; re-read SettingValue
+    /// before loot processing so a host edit is picked up on the next container.
     /// </summary>
     public class GearsModApi : IGearsModApi
     {
@@ -67,8 +69,7 @@ namespace AutoReadMod
         }
 
         /// <summary>
-        /// Re-read World CurrentValues into ModConfig. World settings have no OnSettingChanged
-        /// in GearsAPI; call before processing loot so host mid-session UI edits apply.
+        /// Re-read world SettingValue into ModConfig. World settings have no OnValueChanged.
         /// </summary>
         public static void SyncWorldSettingsIfLoaded()
         {
@@ -158,110 +159,92 @@ namespace AutoReadMod
 
         private static void AttachGlobalListeners(IModGlobalSettings settings)
         {
-            foreach (var setting in settings.GetAllGlobalSettings())
-            {
-                if (setting == null)
-                    continue;
-                setting.OnSettingChanged -= OnGlobalSettingChanged;
-                setting.OnSettingChanged += OnGlobalSettingChanged;
-            }
+            var tab = settings.GetTab(GlobalTab);
+            if (tab == null)
+                return;
+
+            HookBool(tab.GetCategory(GlobalCategoryDebug), "DebugMode", value => ModConfig.Instance.DebugMode = value);
+            var audio = tab.GetCategory(GlobalCategoryAudio);
+            HookBool(audio, "PlayReadSounds", value => ModConfig.Instance.PlayReadSounds = value);
+            HookBool(audio, "PlayBookSetCompleteSound", value => ModConfig.Instance.PlayBookSetCompleteSound = value);
+
+            var viz = tab.GetCategory(GlobalCategoryViz);
+            HookBool(viz, "Enabled", value => ModConfig.Instance.VisualizationEnabled = value);
+            HookBool(viz, "ShowReadEffects", value => ModConfig.Instance.ShowReadEffects = value);
+            HookInt(viz, "MaxVisible", value => ModConfig.Instance.VisualizationMaxVisible = value);
+            HookColor(viz, "ColorBook", value => ModConfig.Instance.VisualizationColorBook = value);
+            HookColor(viz, "ColorMagazine", value => ModConfig.Instance.VisualizationColorMagazine = value);
+            HookColor(viz, "ColorRecipe", value => ModConfig.Instance.VisualizationColorRecipe = value);
+            HookColor(viz, "ColorSchematic", value => ModConfig.Instance.VisualizationColorSchematic = value);
         }
 
-        private static void OnGlobalSettingChanged(IGlobalModSetting setting, string newValue)
+        private static void HookBool(IGlobalModSettingsCategory category, string name, Action<bool> apply)
+        {
+            var setting = category?.GetSetting<ISwitchGlobalSetting<bool>>(name);
+            if (setting == null)
+                return;
+            setting.OnValueChanged += (_, value) => ApplyAndSave(() => apply(value));
+        }
+
+        private static void HookInt(IGlobalModSettingsCategory category, string name, Action<int> apply)
+        {
+            var setting = category?.GetSetting<ISliderGlobalSetting<int>>(name);
+            if (setting == null)
+                return;
+            setting.OnValueChanged += (_, value) => ApplyAndSave(() => apply(value));
+        }
+
+        private static void HookColor(IGlobalModSettingsCategory category, string name, Action<Color> apply)
+        {
+            var setting = category?.GetSetting<IColorSelectorGlobalSetting>(name);
+            if (setting == null)
+                return;
+            setting.OnValueChanged += (_, value) => ApplyAndSave(() => apply(value));
+        }
+
+        private static void ApplyAndSave(Action apply)
         {
             try
             {
-                var config = ModConfig.Instance;
-                var name = setting?.Name ?? "";
-                var category = setting?.Category?.Name ?? "";
-
-                if (category == GlobalCategoryDebug && name == "DebugMode")
-                {
-                    config.DebugMode = ModConfig.ParseBoolSetting(newValue, config.DebugMode);
-                }
-                else if (category == GlobalCategoryAudio)
-                {
-                    switch (name)
-                    {
-                        case "PlayReadSounds":
-                            config.PlayReadSounds = ModConfig.ParseBoolSetting(newValue, config.PlayReadSounds);
-                            break;
-                        case "PlayBookSetCompleteSound":
-                            config.PlayBookSetCompleteSound = ModConfig.ParseBoolSetting(newValue, config.PlayBookSetCompleteSound);
-                            break;
-                    }
-                }
-                else if (category == GlobalCategoryViz)
-                {
-                    switch (name)
-                    {
-                        case "Enabled":
-                            config.VisualizationEnabled = ModConfig.ParseBoolSetting(newValue, config.VisualizationEnabled);
-                            break;
-                        case "ShowReadEffects":
-                            config.ShowReadEffects = ModConfig.ParseBoolSetting(newValue, config.ShowReadEffects);
-                            break;
-                        case "MaxVisible":
-                            config.VisualizationMaxVisible = ModConfig.ParseIntSetting(newValue, config.VisualizationMaxVisible);
-                            break;
-                        case "ColorBook":
-                            config.VisualizationColorBook = ResolveColor(setting, config.VisualizationColorBook);
-                            break;
-                        case "ColorMagazine":
-                            config.VisualizationColorMagazine = ResolveColor(setting, config.VisualizationColorMagazine);
-                            break;
-                        case "ColorRecipe":
-                            config.VisualizationColorRecipe = ResolveColor(setting, config.VisualizationColorRecipe);
-                            break;
-                        case "ColorSchematic":
-                            config.VisualizationColorSchematic = ResolveColor(setting, config.VisualizationColorSchematic);
-                            break;
-                    }
-                }
-
-                config.Save();
+                apply();
+                ModConfig.Instance.Save();
             }
             catch (Exception ex)
             {
-                SafeLog($"Gears OnGlobalSettingChanged failed: {ex.Message}");
+                SafeLog($"Gears OnValueChanged failed: {ex.Message}");
             }
         }
 
         private static bool ReadWorldBool(IWorldModSettingsCategory category, string name, bool defaultValue)
         {
-            var setting = category.GetSetting(name);
+            var setting = category.GetSetting<ISwitchWorldSetting<bool>>(name);
             if (setting == null)
                 return defaultValue;
-            return ModConfig.ParseBoolSetting(setting.CurrentValue, defaultValue);
+            return setting.SettingValue;
         }
 
         private static bool ReadGlobalBool(IGlobalModSettingsCategory category, string name, bool defaultValue)
         {
-            var setting = category.GetSetting(name) as IGlobalValueSetting;
+            var setting = category.GetSetting<ISwitchGlobalSetting<bool>>(name);
             if (setting == null)
                 return defaultValue;
-            return ModConfig.ParseBoolSetting(setting.CurrentValue, defaultValue);
+            return setting.SettingValue;
         }
 
         private static int ReadGlobalInt(IGlobalModSettingsCategory category, string name, int defaultValue)
         {
-            var setting = category.GetSetting(name) as IGlobalValueSetting;
+            var setting = category.GetSetting<ISliderGlobalSetting<int>>(name);
             if (setting == null)
                 return defaultValue;
-            return ModConfig.ParseIntSetting(setting.CurrentValue, defaultValue);
+            return setting.SettingValue;
         }
 
         private static Color ReadGlobalColor(IGlobalModSettingsCategory category, string name, Color defaultColor)
         {
-            var setting = category.GetSetting(name);
-            return ResolveColor(setting, defaultColor);
-        }
-
-        private static Color ResolveColor(IGlobalModSetting setting, Color defaultColor)
-        {
-            if (setting is IColorSelectorGlobalSetting colorSetting)
-                return colorSetting.CurrentColor;
-            return defaultColor;
+            var setting = category.GetSetting<IColorSelectorGlobalSetting>(name);
+            if (setting == null)
+                return defaultColor;
+            return setting.SettingValue;
         }
 
         private static void SafeLog(string message)

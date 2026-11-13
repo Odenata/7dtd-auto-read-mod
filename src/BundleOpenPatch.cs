@@ -63,7 +63,7 @@ namespace AutoReadMod
             }
 
             return new InventorySnapshot(
-                InventorySlotSnapshotCollection.Capture(inventory?.GetSlots()),
+                InventorySlotSnapshotCollection.Capture(inventory == null ? null : GameReflection.GetInventorySlots(inventory)),
                 InventorySlotSnapshotCollection.Capture(GameReflection.GetBagSlots(bag)));
         }
 
@@ -136,7 +136,7 @@ namespace AutoReadMod
                     return;
                 }
 
-                var addedInventoryReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Inventory, inventory?.GetSlots());
+                var addedInventoryReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Inventory, inventory == null ? null : GameReflection.GetInventorySlots(inventory));
                 var addedBagReadableCounts = FindAddedReadableSlotCounts(beforeSnapshot.Bag, GameReflection.GetBagSlots(bag));
                 if (addedInventoryReadableCounts.Count == 0 && addedBagReadableCounts.Count == 0)
                 {

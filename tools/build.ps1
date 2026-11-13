@@ -1,10 +1,11 @@
 param(
-  [string]$Configuration = "Release"
+  [string]$Configuration = "Release",
+  [string]$GameInstallDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$devTools = Join-Path $PSScriptRoot "..\\..\\7dtd-mod-dev-tools\\tools\\build-deploy\\build.ps1"
-& $devTools -ModRepoPath (Join-Path $PSScriptRoot "..") -Configuration $Configuration -CsprojPath "src/AutoReadMod.csproj" -DllPath "src/bin/$Configuration/net472/AutoReadMod.dll"
+$devTools = Join-Path $PSScriptRoot "..\..\7dtd-mod-dev-tools\tools\build-deploy\build.ps1"
+& $devTools -ModRepoPath (Join-Path $PSScriptRoot "..") -Configuration $Configuration -CsprojPath "src/AutoReadMod.csproj" -DllPath "src/bin/$Configuration/net48/AutoReadMod.dll" -GameInstallDir $GameInstallDir
 exit $LASTEXITCODE
 

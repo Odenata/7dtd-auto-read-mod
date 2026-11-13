@@ -30,7 +30,7 @@ if ([string]::IsNullOrWhiteSpace($ModRepoRoot)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($DllPath)) {
-  $DllPath = Join-Path $ModRepoRoot "src\bin\$Configuration\net472\AutoReadMod.dll"
+  $DllPath = Join-Path $ModRepoRoot "src\bin\$Configuration\net48\AutoReadMod.dll"
 }
 
 if (-not (Test-Path $DllPath)) {

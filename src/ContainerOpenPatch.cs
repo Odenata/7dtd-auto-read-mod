@@ -85,11 +85,11 @@ namespace AutoReadMod
     /// v3.0: hook <see cref="XUiC_LootWindow.SetTileEntityChest"/> — runs after <c>lootContainer.SetSlots</c> binds
     /// itemControllers, so auto-read can run immediately (no frame delay). Do not also patch <c>OpenLooting</c> (double read).
     /// </summary>
-    [HarmonyPatch(typeof(XUiC_LootWindow), "SetTileEntityChest", new System.Type[] { typeof(string), typeof(ITileEntityLootable), typeof(bool) })]
+    [HarmonyPatch(typeof(XUiC_LootWindow), "SetTileEntityChest", new System.Type[] { typeof(string), typeof(TEFeatureStorage), typeof(bool) })]
     [HarmonyWrapSafe]
     public class ContainerOpenPatch
     {
-        static void Postfix(XUiC_LootWindow __instance, string _lootContainerName, ITileEntityLootable _te, bool _playOpenSound)
+        static void Postfix(XUiC_LootWindow __instance, string _lootContainerName, TEFeatureStorage _te, bool _playOpenSound)
         {
             if (_te == null)
                 return;
@@ -139,18 +139,18 @@ namespace AutoReadMod
     internal static class ContainerOpenPatchShared
     {
         private static EntityPlayer _deferredPlayer;
-        private static ITileEntityLootable _deferredContainer;
+        private static TEFeatureStorage _deferredContainer;
         private static XUiC_LootWindowGroup _deferredLootWindowGroup;
         private static XUiC_LootWindow _deferredLootWindow;
         private static int _deferredFramesLeft;
 
         private static XUiC_LootWindow _pendingRefreshLootWindow;
-        private static ITileEntityLootable _pendingRefreshTileEntity;
+        private static TEFeatureStorage _pendingRefreshTileEntity;
 
         /// <summary>Frames to wait for loot to populate after opening an empty container (~3s at 60fps).</summary>
         internal const int MaxDeferredFrames = 180;
 
-        internal static bool HasNonEmptyLootItems(ITileEntityLootable container)
+        internal static bool HasNonEmptyLootItems(TEFeatureStorage container)
         {
             var items = TryGetLootItems(container);
             if (items == null)
@@ -198,7 +198,7 @@ namespace AutoReadMod
             }
         }
 
-        internal static void SetDeferred(EntityPlayer player, ITileEntityLootable container, XUiC_LootWindowGroup lootWindowGroup, XUiC_LootWindow lootWindow)
+        internal static void SetDeferred(EntityPlayer player, TEFeatureStorage container, XUiC_LootWindowGroup lootWindowGroup, XUiC_LootWindow lootWindow)
         {
             _deferredPlayer = player;
             _deferredContainer = container;
@@ -207,7 +207,7 @@ namespace AutoReadMod
             _deferredFramesLeft = MaxDeferredFrames;
         }
 
-        internal static void ProcessLootContainer(EntityPlayer player, ITileEntityLootable te, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
+        internal static void ProcessLootContainer(EntityPlayer player, TEFeatureStorage te, XUiC_LootWindowGroup lootWindowGroup = null, XUiC_LootWindow lootWindow = null)
         {
             if (player == null || te == null)
                 return;
@@ -223,7 +223,7 @@ namespace AutoReadMod
             GameReflection.RefreshLootContainerUiFromTileEntity(lootWindow, te);
         }
 
-        internal static void MarkLootUiRefreshNeeded(XUiC_LootWindow lootWindow, ITileEntityLootable te)
+        internal static void MarkLootUiRefreshNeeded(XUiC_LootWindow lootWindow, TEFeatureStorage te)
         {
             if (lootWindow == null || te == null)
                 return;
@@ -242,17 +242,18 @@ namespace AutoReadMod
             GameReflection.RefreshLootContainerUiFromTileEntity(lootWindow, te);
         }
 
-        internal static ItemStack[] TryGetLootItems(ITileEntityLootable container)
+        internal static ItemStack[] TryGetLootItems(TEFeatureStorage container)
         {
-            if (container == null)
+            var grid = container?.ItemGrid;
+            if (grid == null)
             {
                 return null;
             }
 
-            return GameReflection.GetMemberValue<ItemStack[]>(container, "items");
+            return GameReflection.GetMemberValue<ItemStack[]>(grid, "items");
         }
 
-        internal static bool TryWriteLootItem(ITileEntityLootable container, ItemStack[] items, int slotIndex, ItemStack updatedStack)
+        internal static bool TryWriteLootItem(TEFeatureStorage container, ItemStack[] items, int slotIndex, ItemStack updatedStack)
         {
             if (items == null || slotIndex < 0 || slotIndex >= items.Length)
             {
@@ -265,16 +266,9 @@ namespace AutoReadMod
             return true;
         }
 
-        private static void TryMarkLootContainerTouched(ITileEntityLootable container)
+        private static void TryMarkLootContainerTouched(TEFeatureStorage container)
         {
-            if (container == null)
-            {
-                return;
-            }
-
-            // v3 loot containers are interface-based; touch flags nudge persistence/replication without concrete type refs.
-            GameReflection.SetMemberValue(container, "bTouched", true);
-            GameReflection.SetMemberValue(container, "bWasTouched", true);
+            container?.ItemGrid?.Touch();
         }
 
         internal static void SafeLog(string message)
